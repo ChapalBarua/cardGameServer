@@ -1,0 +1,24 @@
+{
+  "name": "cardgameserver",
+  "version": "1.0.0",
+  "description": "this is the server for online card game",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ChapalBarua/cardGameServer.git"
+  },
+  "author": "Chapal Barua",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ChapalBarua/cardGameServer/issues"
+  },
+  "homepage": "https://github.com/ChapalBarua/cardGameServer#readme",
+  "dependencies": {
+    "express": "^4.19.2",
+    "fs": "^0.0.1-security",
+    "socket.io": "^4.7.5"
+  }
+}
