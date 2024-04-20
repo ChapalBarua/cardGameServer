@@ -31,9 +31,7 @@ io.on("connection", (socketConnection) => {
   // joining to a room
   socket.on('join', joinRoomController);
 
-  // assign user name to the connection
-  socket.on('setUser', setUser);
-
+  // shuffle 52 cards and distribute to players
   socket.on('shuffleCard', shuffleCard);
 })
 
