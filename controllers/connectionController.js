@@ -14,6 +14,7 @@ function joinRoom (payload) {
 
     // assigning sitting chair to newly joined player
     socket.data.orientation = sittingSequence[numberOfClients];
+    socket.data.roomId = roomId;
 
     if(numberOfClients === 0){
       console.log(`Creating room ${roomId} and emitting room_created socket event`);
@@ -62,4 +63,4 @@ function setUser(userName){
 
 }
 
-module.exports = { joinRoom, setUser };
+module.exports = { joinRoom, setUser, sittingSequence };

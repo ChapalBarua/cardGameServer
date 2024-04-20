@@ -7,6 +7,7 @@ var options = {
 const app = express();
 const joinRoomController = require("./connectionController").joinRoom;
 const setUser = require("./connectionController").setUser;
+const shuffleCard = require('./cardPlayController').shuffleCard;
 data = [];
 
 // var options = {
@@ -33,11 +34,7 @@ io.on("connection", (socketConnection) => {
   // assign user name to the connection
   socket.on('setUser', setUser);
 
-  socket.on('shuffleCard', (payload) => {
-    // console.log(tables)
-    // console.log('card is shuffled');
-    // console.log(socket.data.orientation);
-  });
+  socket.on('shuffleCard', shuffleCard);
 })
 
 module.exports = { server };
