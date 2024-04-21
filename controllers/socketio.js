@@ -5,10 +5,6 @@ var options = {
   cert: fs.readFileSync(__dirname +'/../helpers/secrets/certs/cert.crt')
 };
 const app = express();
-const joinRoomController = require("./connectionController").joinRoom;
-const setUser = require("./connectionController").setUser;
-const shuffleCard = require('./cardPlayController').shuffleCard;
-data = [];
 
 // var options = {
 //   key: fs.readFileSync('/home/ec2-user/secrets/certs/cert.key'),
@@ -22,17 +18,21 @@ const io = require('socket.io')(server,{
   }
 });
 
-io.on("connection", (socketConnection) => {
+tables = []; // this is the tracking data of all created rooms/tables
+const { joinRoomController } = require("./connectionHandler")(io,tables);
+const { shuffleCard } = require('./cardPlayHandler')(io,tables);
+const onConnection = (socketConnection) => {
   console.log(`User connected`);
   socketio = io;
   socket = socketConnection;
-  tables = data; // this is the tracking data of all created rooms/tables
 
   // joining to a room
   socket.on('join', joinRoomController);
 
   // shuffle 52 cards and distribute to players
   socket.on('shuffleCard', shuffleCard);
-})
+};
+
+io.on("connection", onConnection);
 
 module.exports = { server };
