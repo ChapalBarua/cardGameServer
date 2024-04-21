@@ -19,18 +19,31 @@ const io = require('socket.io')(server,{
 });
 
 tables = []; // this is the tracking data of all created rooms/tables
-const { joinRoomController } = require("./connectionHandler")(io,tables);
+
+let userTracker = { // this is the tracking data of all connected users and active users(joined in room/table)
+  connectedUsers : 0,
+  activeUsers : 0
+}
+const { joinRoomController, disconnectHandler } = require("./connectionHandler")(io,tables,userTracker);
 const { shuffleCard } = require('./cardPlayHandler')(io,tables);
-const onConnection = (socketConnection) => {
-  console.log(`User connected`);
-  socketio = io;
-  socket = socketConnection;
+const onConnection = (socket) => {
+
+  // keep track of users connected
+  userTracker.connectedUsers++;
+
+  // notify connected user numbers to everyone after new user connects
+  io.emit("user_connected", userTracker);
+
 
   // joining to a room
   socket.on('join', joinRoomController);
 
   // shuffle 52 cards and distribute to players
   socket.on('shuffleCard', shuffleCard);
+
+  // notify connected user numbers to everyone after a user disconnects
+  socket.on('disconnect', disconnectHandler);
+
 };
 
 io.on("connection", onConnection);

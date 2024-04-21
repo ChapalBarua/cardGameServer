@@ -1,12 +1,10 @@
-module.exports = (io)=>{
+module.exports = (io,tables,userTracker)=>{
   const joinRoomController = async function (payload){
     const socket = this;
     const roomId = payload.room;
     const userName = payload.userName;
     const roomClients = io.sockets.adapter.rooms.get(roomId) || new Set();
     const numberOfClients = roomClients.size;
-    console.log(`Room ID: ${roomId}`);
-    console.log(`numberOfClients of room ${roomId}: ${numberOfClients}`);
   
     // These events are emitted only to the sender socket.
     
@@ -18,7 +16,6 @@ module.exports = (io)=>{
   
       // creating and joining an empty room
       if(numberOfClients === 0){
-        console.log(`Creating room ${roomId} and emitting room_created socket event`);
   
         // creating new table for the new room in tables data
         userTable = {
@@ -60,27 +57,35 @@ module.exports = (io)=>{
       } 
       
       // joining an existing room
-      else { 
-        console.log(`Joining room ${roomId} and emitting room_joined socket event`);
-        
+      else {
         userTable = tables.find(table=>table.roomId===roomId);
         let orientation = Object.keys(userTable.players).find(key=>userTable.players[key]==='');
         socket.data.orientation = orientation;
         userTable.players[orientation] = userName;
   
         await socket.join(roomId);
-        socket.emit('room_joined', {
+        await socket.emit('room_joined', {
           roomId: roomId,
           peerId: socket.id,
-          user: socket.data.user,
-          orientation: socket.data.orientation,
+          user: userName,
+          orientation: orientation,
           players: userTable.players
         });
+        
+        // informs everyone else that an user joined room
+        socket.to(roomId).emit("user_joined_room", userName, userTable.players);
       }
     } else { // there is no spot in table
+      console.log('user cant join in the room');
       socket.emit('capacity_full');
     }
   };
 
-  return { joinRoomController }
+
+  const disconnectHandler = async function (reason){
+    userTracker.connectedUsers--;
+    io.emit("user_disconnected", userTracker);
+  };
+
+  return { joinRoomController, disconnectHandler }
 }
