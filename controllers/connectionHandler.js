@@ -46,7 +46,11 @@ module.exports = (io,tables,userTracker)=>{
   
         tables.push(userTable); // updating tables in calling function - socketio.js
         await socket.join(roomId);
-  
+
+        // notify active user numbers to everyone after new user connects
+        userTracker.activeUsers++;
+        io.emit("user_active", userTracker);
+
         socket.emit('room_created', {
           roomId,
           peerId: socket.id,
@@ -71,8 +75,12 @@ module.exports = (io,tables,userTracker)=>{
           orientation: orientation,
           players: userTable.players
         });
+
+        // notify active user numbers to everyone after new user connects
+        userTracker.activeUsers++;
+        io.emit("user_active", userTracker);
         
-        // informs everyone else that an user joined room
+        // informs everyone else in the room that an user joined room
         socket.to(roomId).emit("user_joined_room", userName, userTable.players);
       }
     } else { // there is no spot in table
@@ -83,8 +91,28 @@ module.exports = (io,tables,userTracker)=>{
 
 
   const disconnectHandler = async function (reason){
+    socket = this;
+    roomId = socket.data.roomId;
+
+    // informs everyone that any user has disconnected from the server
     userTracker.connectedUsers--;
     io.emit("user_disconnected", userTracker);
+    
+
+    if(roomId){
+      
+      // informs everyone that a user has disconnected from any room
+      userTracker.activeUsers--;
+      io.emit("user_inactive", userTracker);
+
+      // informs everyone in the same room that a user has disconnected from that room
+      let orientation = socket.data.orientation;
+      let userName = socket.data.user;
+      userTable = tables.find(table=>table.roomId===roomId);
+      userTable.players[orientation] = '';
+
+      socket.to(roomId).emit("user_left_room", userName, userTable.players);
+    }
   };
 
   return { joinRoomController, disconnectHandler }
