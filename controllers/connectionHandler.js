@@ -21,41 +21,41 @@ module.exports = (io,tables,userTracker)=>{
         userTable = {
           roomId: roomId,
           cards: {
-            bottom: [],
-            left: [],
-            top: [],
-            right: []
+            one: [],
+            two: [],
+            three: [],
+            four: []
           },
           players: {
-            bottom: '',
-            left: '',
-            top: '',
-            right: ''
+            one: 'player one',
+            two: 'player two',
+            three: 'player three',
+            four: 'player four'
           },
           currentRound: 0, // running round out of 13 card set (4*13)
           completedGame: 0, // how many games are completed
           currentSetColor: '',
-          whoSetColor: '' //('top', 'bottom', 'left', 'right')
+          whoSetColor: '' //('one', 'two', 'three', 'four')
         };
   
         // finding empty seat and placing newly joined player there
    
-        let orientation = Object.keys(userTable.players).filter(key=>userTable.players[key]==='')[0];
-        socket.data.orientation = orientation;
-        userTable.players[orientation] = userName;
+        let serial = Object.keys(userTable.players).filter(key=>userTable.players[key]==='player ' + key)[0];
+        socket.data.serial = serial;
+        userTable.players[serial] = userName;
   
         tables.push(userTable); // updating tables in calling function - socketio.js
         await socket.join(roomId);
 
         // notify active user numbers to everyone after new user connects
         userTracker.activeUsers++;
-        io.emit("user_active", userTracker);
+        await io.emit("user_active", userTracker);
 
-        socket.emit('room_created', {
+        await socket.emit('room_created', {
           roomId,
           peerId: socket.id,
           user: userName,
-          orientation,
+          serial,
           players: userTable.players
         });
       } 
@@ -63,16 +63,16 @@ module.exports = (io,tables,userTracker)=>{
       // joining an existing room
       else {
         userTable = tables.find(table=>table.roomId===roomId);
-        let orientation = Object.keys(userTable.players).find(key=>userTable.players[key]==='');
-        socket.data.orientation = orientation;
-        userTable.players[orientation] = userName;
+        let serial = Object.keys(userTable.players).filter(key=>userTable.players[key]==='player ' + key)[0];
+        socket.data.serial = serial;
+        userTable.players[serial] = userName;
   
         await socket.join(roomId);
         await socket.emit('room_joined', {
-          roomId: roomId,
+          roomId,
           peerId: socket.id,
           user: userName,
-          orientation: orientation,
+          serial,
           players: userTable.players
         });
 
@@ -106,13 +106,20 @@ module.exports = (io,tables,userTracker)=>{
       io.emit("user_inactive", userTracker);
 
       // informs everyone in the same room that a user has disconnected from that room
-      let orientation = socket.data.orientation;
+      let serial = socket.data.serial;
       let userName = socket.data.user;
       userTable = tables.find(table=>table.roomId===roomId);
-      userTable.players[orientation] = '';
+      userTable.players[serial] = 'player ' + serial;
 
-      socket.to(roomId).emit("user_left_room", userName, userTable.players);
+      // after user disconnecting - if number of clients in room is zero - drop table
+      playerNumbers = io.sockets.adapter.rooms.get(roomId)?.size;
+      if( !playerNumbers){
+        tables = tables.filter(table=>table.roomId!=roomId);
+      }
+
+      await socket.to(roomId).emit("user_left_room", userName, userTable.players);
     }
+    
   };
 
   return { joinRoomController, disconnectHandler }

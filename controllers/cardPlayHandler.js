@@ -8,13 +8,20 @@ module.exports = (io, tables)=>{
         let distributedCards = [cards.slice(0,13), cards.slice(13,26), cards.slice(26,39), cards.slice(39,52)];
         let roomId = socket.data.roomId;
         const roomClients = io.sockets.adapter.rooms.get(roomId) || new Set();
+        let roomTable = tables.find(table=>table.roomId===roomId);
 
         let index = 0;
         for (const clientId of roomClients) {
+            // getting all the sockets/players in the room
             const clientSocket = io.sockets.sockets.get(clientId);
+            socketSerial = clientSocket.data.serial;
 
+            // sending the shuffled cards to individual player
             assignedCardsToClients = distributedCards[index];
             await clientSocket.emit('distribute_cards', assignedCardsToClients);
+
+            // keeping records of distributed card in table
+            roomTable.cards[socketSerial] = assignedCardsToClients;
             index++;
         }
     };
