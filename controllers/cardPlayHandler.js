@@ -8,10 +8,8 @@ module.exports = (io, getTables, updateTables)=>{
         let distributedCards = [cards.slice(0,13), cards.slice(13,26), cards.slice(26,39), cards.slice(39,52)];
         let roomId = socket.data.roomId;
         let tables = getTables();
-        console.log("*****",tables);
         const roomClients = io.sockets.adapter.rooms.get(roomId) || new Set();
         let roomTable = tables.find(table=>table.roomId===roomId);
-        console.log("*****",roomTable);
         let index = 0;
         for (const clientId of roomClients) {
             // getting all the sockets/players in the room
@@ -26,7 +24,6 @@ module.exports = (io, getTables, updateTables)=>{
             roomTable.cards[socketSerial] = assignedCardsToClients;
             index++;
         }
-
         updateTables(tables);
     };
 
