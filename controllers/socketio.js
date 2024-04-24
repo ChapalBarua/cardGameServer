@@ -6,13 +6,37 @@ var options = {
 };
 const app = express();
 
-///////////////// endpoint to track info /////////////////////////////
+
 tables = []; // this is the tracking data of all created rooms/tables
 
+const updateTables = function(inputTables){
+  console.log('someone changing table',tables);
+  tables=inputTables;
+};
+
+const getTables = function(){
+  return structuredClone(tables);
+}
+
+userTracker = { // this is the tracking data of all connected users and active users(joined in room/table)
+  connectedUsers : 0,
+  activeUsers : 0
+};
+
+const getUserTracker = function(){
+  return structuredClone(userTracker);
+}
+
+const updateUserTracker = function(updatedUserTracker){
+  userTracker = updatedUserTracker;
+}
+
+
+///////////////// endpoint to track info /////////////////////////////
 app.get('/tables', (req, res) => {
 
   // Send the tables as a response to the client
-  res.send(tables);
+  res.send(getTables());
 });
 
 
@@ -35,16 +59,16 @@ const io = require('socket.io')(server,{
 
 // tables = []; // this is the tracking data of all created rooms/tables
 
-let userTracker = { // this is the tracking data of all connected users and active users(joined in room/table)
-  connectedUsers : 0,
-  activeUsers : 0
-}
-const { joinRoomController, disconnectHandler } = require("./connectionHandler")(io,tables,userTracker);
-const { shuffleCard, playCardHandler, unplayCardHandler } = require('./cardPlayHandler')(io,tables);
-const onConnection = (socket) => {
 
+const { joinRoomController, disconnectHandler } = require("./connectionHandler")(io, getTables, updateTables, getUserTracker, updateUserTracker);
+const { shuffleCard, playCardHandler, unplayCardHandler } = require('./cardPlayHandler')(io, getTables, updateTables);
+
+const onConnection = (socket) => {
+  
   // keep track of users connected
+  let userTracker = getUserTracker();
   userTracker.connectedUsers++;
+  updateUserTracker(userTracker);
 
   // notify connected user numbers to everyone after new user connects
   io.emit("user_connected", userTracker);

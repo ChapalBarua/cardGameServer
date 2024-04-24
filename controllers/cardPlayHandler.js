@@ -1,4 +1,4 @@
-module.exports = (io, tables)=>{
+module.exports = (io, getTables, updateTables)=>{
     const cardSuits = ['diamonds', 'clubs', 'hearts', 'spades'];
     const cardValues = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'jack', 'queen', 'king', 'ace'];
 
@@ -7,6 +7,7 @@ module.exports = (io, tables)=>{
         let cards = getShuffledCardsDeck();
         let distributedCards = [cards.slice(0,13), cards.slice(13,26), cards.slice(26,39), cards.slice(39,52)];
         let roomId = socket.data.roomId;
+        let tables = getTables();
         console.log("*****",tables);
         const roomClients = io.sockets.adapter.rooms.get(roomId) || new Set();
         let roomTable = tables.find(table=>table.roomId===roomId);
@@ -25,6 +26,8 @@ module.exports = (io, tables)=>{
             roomTable.cards[socketSerial] = assignedCardsToClients;
             index++;
         }
+
+        updateTables(tables);
     };
 
     // notifies everyone when a player plays a card
