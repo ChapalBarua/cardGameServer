@@ -7,9 +7,10 @@ module.exports = (io, tables)=>{
         let cards = getShuffledCardsDeck();
         let distributedCards = [cards.slice(0,13), cards.slice(13,26), cards.slice(26,39), cards.slice(39,52)];
         let roomId = socket.data.roomId;
+        console.log("*****",tables);
         const roomClients = io.sockets.adapter.rooms.get(roomId) || new Set();
         let roomTable = tables.find(table=>table.roomId===roomId);
-
+        console.log("*****",roomTable);
         let index = 0;
         for (const clientId of roomClients) {
             // getting all the sockets/players in the room
@@ -26,6 +27,20 @@ module.exports = (io, tables)=>{
         }
     };
 
+    // notifies everyone when a player plays a card
+    const playCardHandler = async function(playedCard){
+        const socket = this;
+        roomId = socket.data.roomId;
+        io.to(roomId).emit("played_card", playedCard);
+    };
+
+
+    // notifies everyone when a player unplays a card
+    const unplayCardHandler = async function(unplayedCard){
+        const socket = this;
+        roomId = socket.data.roomId;
+        io.to(roomId).emit("unplayed_card", unplayedCard);
+    };
 
     /**
      * 
@@ -70,5 +85,5 @@ module.exports = (io, tables)=>{
         return faceCards.length > 0;
     };
 
-    return { shuffleCard };
+    return { shuffleCard, playCardHandler, unplayCardHandler };
 }
