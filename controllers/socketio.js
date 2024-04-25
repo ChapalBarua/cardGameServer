@@ -50,7 +50,7 @@ const io = require('socket.io')(server,{
 });
 
 const { joinRoomController, disconnectHandler } = require("./connectionHandler")(io, getTables, updateTables, getUserTracker, updateUserTracker);
-const { shuffleCard, playCardHandler, unplayCardHandler } = require('./cardPlayHandler')(io, getTables, updateTables);
+const { shuffleCard, playCardHandler, unplayCardHandler, onCallDecided } = require('./cardPlayHandler')(io, getTables, updateTables);
 
 const onConnection = (socket) => {
 
@@ -76,6 +76,9 @@ const onConnection = (socket) => {
 
   // notify connected user numbers to everyone after a user disconnects
   socket.on('disconnect', disconnectHandler);
+
+  // take actions after a call is decided by the users
+  socket.on('callDecided', onCallDecided);
 };
 
 io.on("connection", onConnection);

@@ -1,6 +1,19 @@
 module.exports = (io, getTables, updateTables)=>{
     const cardSuits = ['diamonds', 'clubs', 'hearts', 'spades'];
     const cardValues = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'jack', 'queen', 'king', 'ace'];
+    const nextPlayer = { // helper object to decide who will play next
+        one: 'two',
+        two: 'three',
+        three: 'four',
+        four: 'one'
+    };
+
+    const inactivePlayer = { // helper object to decide who will show card based on who set color
+        one: 'three',
+        two: 'four',
+        three: 'one',
+        four: 'two'
+    };
 
     const shuffleCard = async function(){
         const socket = this;
@@ -25,6 +38,30 @@ module.exports = (io, getTables, updateTables)=>{
             index++;
         }
         updateTables(tables);
+    };
+
+    
+
+    // take actions after a call is decided- puts info in table and broadcast next player
+    const onCallDecided = async function(decidedCall){
+        const socket = this;
+        roomId = socket.data.roomId;
+        let tables = getTables();
+        let roomTable = tables.find(table=>table.roomId===roomId);
+        roomTable.whoSetColor = decidedCall.personCalled;
+        roomTable.currentCall = decidedCall.call;
+        roomTable.currentSetColor = decidedCall.color;
+        roomTable.whoShowCards = inactivePlayer[decidedCall.personCalled];
+        roomTable.whoPlayNext = nextPlayer[ decidedCall.personCalled];
+        roomTable.currentRound++;
+
+        updateTables(tables);
+
+        // emits who will play and which cards will play
+        await io.to(roomId).emit("next_player", {
+            nextPlayer: nextPlayer[decidedCall.personCalled], 
+            nextCards: nextPlayer[decidedCall.personCalled]
+        });
     };
 
     // notifies everyone when a player plays a card
@@ -85,5 +122,5 @@ module.exports = (io, getTables, updateTables)=>{
         return faceCards.length > 0;
     };
 
-    return { shuffleCard, playCardHandler, unplayCardHandler };
+    return { shuffleCard, playCardHandler, unplayCardHandler, onCallDecided };
 }

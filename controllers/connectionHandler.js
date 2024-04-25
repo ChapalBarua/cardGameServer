@@ -5,15 +5,17 @@ module.exports = (io, getTables, updateTables, getUserTracker, updateUserTracker
     const userName = payload.userName;
     const roomClients = io.sockets.adapter.rooms.get(roomId) || new Set();
     const numberOfClients = roomClients.size;
-    
-    let userTable;
     if(numberOfClients <= 3){ // there is spot available in the table
 
       // joining room
       await socket.join(roomId);
 
-      // notify active user numbers to everyone after new user connects
+      let userTable;
+      let tables = getTables();
       let userTracker = getUserTracker();
+      let serial = 'one';
+
+      // notify active user numbers to everyone after new user connects
       userTracker.activeUsers++;
       updateUserTracker(userTracker);
 
@@ -34,17 +36,32 @@ module.exports = (io, getTables, updateTables, getUserTracker, updateUserTracker
           three: 'player three',
           four: 'player four'
         },
+        cardsOnTable: [],
+        cardShown: false,
         currentRound: 0, // running round out of 13 card set (4*13)
         completedGame: 0, // how many games are completed
         currentSetColor: '',
-        whoSetColor: '' //('one', 'two', 'three', 'four')
+        whoSetColor: '', //('one', 'two', 'three', 'four'),
+        whoShowCards: '', //('one', 'two', 'three', 'four'),
+        currentCall: 0, // 1,2,3,4,5,6,7
+        whoPlayNext: '', // one, two, three, four
+        usersOnTable: 1,
+        currentPoints: { // team 1 -one,three, team two - two four serial
+          team1: 0,
+          team2: 0,
+          setsTakenByTeam1: 0,
+          setsTakenByTeam2: 0
+        }
       };
-      serial = 'one';
+      
   
       // creating and joining an empty room
-      let tables = getTables();
       if(numberOfClients === 0){
+        // update tables when user joins
+        tables = tables.filter(table=>table.roomId!=roomId); // drops table in case there is any residue data
+        userTable.players[serial] = userName;
         tables.push(userTable);
+
         await socket.emit('room_created', {
           roomId,
           peerId: socket.id,
@@ -54,10 +71,14 @@ module.exports = (io, getTables, updateTables, getUserTracker, updateUserTracker
         });
       }else { // joining an existing room
         userTable = tables.find(table=>table.roomId===roomId); // update user table if room already exist
-
+        
         // finding empty serial one/two/three/four
         serial = Object.keys(userTable.players).filter(key=>userTable.players[key]==='player ' + key)[0];
+        // update tables when user joins
+        userTable.players[serial] = userName;
+        userTable.usersOnTable++;
 
+        // inform owner that he has joined the room
         await socket.emit('room_joined', {
           roomId,
           peerId: socket.id,
@@ -67,13 +88,17 @@ module.exports = (io, getTables, updateTables, getUserTracker, updateUserTracker
         });
 
         // informs everyone else in the room that an user joined room
-        socket.to(roomId).emit("user_joined_room", userName, userTable.players);
+        await socket.to(roomId).emit("user_joined_room", userName, userTable.players);
       }
-
       socket.data.user = userName;
       socket.data.roomId = roomId;
       socket.data.serial = serial;
-      userTable.players[serial] = userName;
+
+      if(userTable.usersOnTable === 4){
+        await io.to(roomId).emit("can_shuffle", true);
+      }
+
+      // propagate updated table information to central data set table
       updateTables(tables);
       
     } else { // there is no spot in table
@@ -92,20 +117,27 @@ module.exports = (io, getTables, updateTables, getUserTracker, updateUserTracker
     await io.emit("user_disconnected", userTracker);
     
     if(roomId){
-      // informs everyone that a user has disconnected from any room
+      
+      // Global-actions-  informs everyone that a user has disconnected from any room
       userTracker.activeUsers--;
       await io.emit("user_inactive", userTracker);
 
-      // informs everyone in the same room that a user has disconnected from that room
+      userTable = tables.find(table=>table.roomId===roomId);
+      userTable.usersOnTable--;
+      if(userTable.usersOnTable===0){ // no user left in room
+        tables = tables.filter(table=>table.roomId!=roomId);
+        return;
+      }
+
+      // local (room) actions
+      await io.to(roomId).emit("can_shuffle", false);
+      
       let serial = socket.data.serial;
       let userName = socket.data.user;
-      userTable = tables.find(table=>table.roomId===roomId);
+      
       userTable.players[serial] = 'player ' + serial;
 
-      // if room id does not exist (room became empty) drop table
-      if( !io.sockets.adapter.rooms.get(roomId)){
-        tables = tables.filter(table=>table.roomId!=roomId);
-      }
+      // informs everyone in the same room that a user has disconnected from that room
       await socket.to(roomId).emit("user_left_room", userName, userTable.players);
     }
     updateTables(tables);
