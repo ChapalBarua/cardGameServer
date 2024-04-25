@@ -1,6 +1,6 @@
 module.exports = (io, getTables, updateTables, getUserTracker, updateUserTracker)=>{
 
-  // should not use await here. when multiple user connects disconnects at the same time - await creates issues - skipping to second
+  // should not use await here. when multiple user connects disconnects at the same time - await creates issues - like skipping to second
   // user before first user is finished
   const joinRoomController = async function (payload){
     const socket = this;

@@ -1,7 +1,7 @@
 module.exports = (io, getTables, updateTables)=>{
     const cardSuits = ['diamonds', 'clubs', 'hearts', 'spades'];
     const cardValues = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'jack', 'queen', 'king', 'ace'];
-    const nextPlayer = { // helper object to decide who will play next
+    const NextPlayer = { // helper object to decide who will play next
         one: 'two',
         two: 'three',
         three: 'four',
@@ -52,15 +52,15 @@ module.exports = (io, getTables, updateTables)=>{
         roomTable.currentCall = decidedCall.call;
         roomTable.currentSetColor = decidedCall.color;
         roomTable.whoShowCards = inactivePlayer[decidedCall.personCalled];
-        roomTable.whoPlayNext = nextPlayer[ decidedCall.personCalled];
+        roomTable.whoPlayNext = NextPlayer[ decidedCall.personCalled];
         roomTable.currentRound++;
 
         updateTables(tables);
 
         // emits who will play and which cards will play
         io.to(roomId).emit("next_player", {
-            nextPlayer: nextPlayer[decidedCall.personCalled], 
-            nextCards: nextPlayer[decidedCall.personCalled]
+            nextPlayer: NextPlayer[decidedCall.personCalled], 
+            nextCards: NextPlayer[decidedCall.personCalled]
         });
     };
 
@@ -68,6 +68,37 @@ module.exports = (io, getTables, updateTables)=>{
     const playCardHandler = async function(playedCard){
         const socket = this;
         roomId = socket.data.roomId;
+        let tables = getTables();
+        let roomTable = tables.find(table=>table.roomId===roomId);
+        roomTable.cardsOnTable.push(playedCard);
+        if(roomTable.cardsOnTable!=4){ // if more cards will be played in current round - select next - show cards on condition
+
+            // decide who will play next
+            let nextPlayer = NextPlayer[playedCard.serial];
+            let nextCards = NextPlayer[playedCard.serial]; //serial
+            // condition to hand over control to partner if card shown
+            if(nextPlayer===roomTable.whoShowCards){
+                nextPlayer = inactivePlayer[nextPlayer];
+            }
+
+            roomTable.whoPlayNext = nextPlayer;
+
+            // first round - after first card play -cards will be shown
+            if(roomTable.currentRound===1 && roomTable.cardsOnTable.length ===1){
+                let shownCards = {
+                    serial: nextCards,
+                    cards: roomTable.cards[nextCards]
+                }
+                io.to(roomId).emit("show_cards", shownCards);
+            }
+            
+            // attach info about next player with played card if round not complete
+            playedCard['next'] = {
+                nextPlayer: nextPlayer,
+                nextCards: nextCards
+            }
+        }
+        updateTables(tables);
         io.to(roomId).emit("played_card", playedCard);
     };
 
