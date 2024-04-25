@@ -1,4 +1,7 @@
 module.exports = (io, getTables, updateTables, getUserTracker, updateUserTracker)=>{
+
+  // should not use await here. when multiple user connects disconnects at the same time - await creates issues - skipping to second
+  // user before first user is finished
   const joinRoomController = async function (payload){
     const socket = this;
     const roomId = payload.room;
@@ -8,7 +11,7 @@ module.exports = (io, getTables, updateTables, getUserTracker, updateUserTracker
     if(numberOfClients <= 3){ // there is spot available in the table
 
       // joining room
-      await socket.join(roomId);
+      socket.join(roomId);
 
       let userTable;
       let tables = getTables();
@@ -62,7 +65,7 @@ module.exports = (io, getTables, updateTables, getUserTracker, updateUserTracker
         userTable.players[serial] = userName;
         tables.push(userTable);
 
-        await socket.emit('room_created', {
+        socket.emit('room_created', {
           roomId,
           peerId: socket.id,
           user: userName,
@@ -79,7 +82,7 @@ module.exports = (io, getTables, updateTables, getUserTracker, updateUserTracker
         userTable.usersOnTable++;
 
         // inform owner that he has joined the room
-        await socket.emit('room_joined', {
+        socket.emit('room_joined', {
           roomId,
           peerId: socket.id,
           user: userName,
@@ -88,14 +91,14 @@ module.exports = (io, getTables, updateTables, getUserTracker, updateUserTracker
         });
 
         // informs everyone else in the room that an user joined room
-        await socket.to(roomId).emit("user_joined_room", userName, userTable.players);
+        socket.to(roomId).emit("user_joined_room", userName, userTable.players);
       }
       socket.data.user = userName;
       socket.data.roomId = roomId;
       socket.data.serial = serial;
 
       if(userTable.usersOnTable === 4){
-        await io.to(roomId).emit("can_shuffle", true);
+        io.to(roomId).emit("can_shuffle", true);
       }
 
       // propagate updated table information to central data set table
@@ -114,23 +117,25 @@ module.exports = (io, getTables, updateTables, getUserTracker, updateUserTracker
     let tables = getTables();
     let userTracker = getUserTracker();
     userTracker.connectedUsers--;
-    await io.emit("user_disconnected", userTracker);
+    io.emit("user_disconnected", userTracker);
     
     if(roomId){
       
       // Global-actions-  informs everyone that a user has disconnected from any room
       userTracker.activeUsers--;
-      await io.emit("user_inactive", userTracker);
+      io.emit("user_inactive", userTracker);
 
       userTable = tables.find(table=>table.roomId===roomId);
       userTable.usersOnTable--;
       if(userTable.usersOnTable===0){ // no user left in room
         tables = tables.filter(table=>table.roomId!=roomId);
+        updateTables(tables); // updating tables before returning
+        updateUserTracker(userTracker);
         return;
       }
 
       // local (room) actions
-      await io.to(roomId).emit("can_shuffle", false);
+      io.to(roomId).emit("can_shuffle", false);
       
       let serial = socket.data.serial;
       let userName = socket.data.user;
@@ -138,7 +143,7 @@ module.exports = (io, getTables, updateTables, getUserTracker, updateUserTracker
       userTable.players[serial] = 'player ' + serial;
 
       // informs everyone in the same room that a user has disconnected from that room
-      await socket.to(roomId).emit("user_left_room", userName, userTable.players);
+      socket.to(roomId).emit("user_left_room", userName, userTable.players);
     }
     updateTables(tables);
     updateUserTracker(userTracker);

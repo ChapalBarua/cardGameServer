@@ -31,7 +31,7 @@ module.exports = (io, getTables, updateTables)=>{
 
             // sending the shuffled cards to individual player
             assignedCardsToClients = distributedCards[index];
-            await clientSocket.emit('distribute_cards', assignedCardsToClients);
+            clientSocket.emit('distribute_cards', assignedCardsToClients);
 
             // keeping records of distributed card in table
             roomTable.cards[socketSerial] = assignedCardsToClients;
@@ -58,7 +58,7 @@ module.exports = (io, getTables, updateTables)=>{
         updateTables(tables);
 
         // emits who will play and which cards will play
-        await io.to(roomId).emit("next_player", {
+        io.to(roomId).emit("next_player", {
             nextPlayer: nextPlayer[decidedCall.personCalled], 
             nextCards: nextPlayer[decidedCall.personCalled]
         });
