@@ -60,8 +60,12 @@ module.exports = (io, getTables, updateTables)=>{
         // emits who will play and which cards will play
         io.to(roomId).emit("next_player", {
             nextPlayer: NextPlayer[decidedCall.personCalled], 
-            nextCards: NextPlayer[decidedCall.personCalled]
+            nextCards: NextPlayer[decidedCall.personCalled],
+            points: roomTable.currentPoints
         });
+
+        // emits standing call
+        io.to(roomId).emit("standing_call", roomTable.currentCall + ' '+roomTable.currentSetColor);
     };
 
     // notifies everyone when a player plays a card
@@ -121,6 +125,67 @@ module.exports = (io, getTables, updateTables)=>{
         io.to(roomId).emit("unplayed_card", unplayedCard);
     };
 
+    // perform actions when a round is complete
+    const onRoundComplete = async function(){
+        const socket = this;
+        let roomId = socket.data.roomId;
+        let tables = getTables();
+        let roomTable = tables.find(table=>table.roomId===roomId);
+
+        // decide winner card
+        // if color played - then highest color card
+
+        let currentColor = roomTable.currentSetColor;
+
+        let playedCurrentColorCards = roomTable.cardsOnTable.filter(playedCard=>playedCard.card.cardType===currentColor);
+
+        let winnerCard;
+
+        // if current color is played
+        if(playedCurrentColorCards.length>0){
+            winnerCard = playedCurrentColorCards.sort((card1, card2)=>
+                getValue(card2.card.cardValue) - getValue(card1.card.cardValue))[0];
+        }else { // if current color is not played then first card color is set color for the round
+            let modifiedColor = roomTable.cardsOnTable[0].card.cardType;
+            let modifiedColorCards = roomTable.cardsOnTable.filter(playedCard=>playedCard.card.cardType===modifiedColor);
+            winnerCard = modifiedColorCards.sort((card1, card2)=>
+                getValue(card2.card.cardValue) - getValue(card1.card.cardValue))[0];
+        }
+        // winnerCard.serial is the winner
+
+        if(winnerCard.serial === 'one' || winnerCard.serial === 'three'){
+            roomTable.currentPoints.setsTakenByTeam1++;
+        }else {
+            roomTable.currentPoints.setsTakenByTeam2++;
+        }
+
+        let nextPlayer = winnerCard.serial;
+        let nextCards = winnerCard.serial;
+
+        if(nextPlayer===roomTable.whoShowCards){
+            nextPlayer = inactivePlayer[nextPlayer];
+        }
+        roomTable.cardHistory.push(roomTable.cardsOnTable);
+        roomTable.cardsOnTable = [];
+        roomTable.currentRound++;
+        roomTable.whoPlayNext = nextPlayer;
+        updateTables(tables);
+
+        io.to(roomId).emit("next_player", {
+            nextPlayer, 
+            nextCards,
+            currentPoints: roomTable.currentPoints // update points and also indicates current round is complete
+        });        
+    }
+
+
+    /**
+     * returns a card value based on string value
+     */
+    function getValue(playedCardvalue){
+        return cardValues.findIndex(value=>value===playedCardvalue);
+    }
+
     /**
      * 
      * @returns array of 52 random cards
@@ -164,5 +229,5 @@ module.exports = (io, getTables, updateTables)=>{
         return faceCards.length > 0;
     };
 
-    return { shuffleCard, playCardHandler, unplayCardHandler, onCallDecided };
+    return { shuffleCard, playCardHandler, unplayCardHandler, onCallDecided, onRoundComplete };
 }

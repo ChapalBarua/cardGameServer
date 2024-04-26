@@ -54,7 +54,8 @@ module.exports = (io, getTables, updateTables, getUserTracker, updateUserTracker
           team2: 0,
           setsTakenByTeam1: 0,
           setsTakenByTeam2: 0
-        }
+        },
+        cardHistory: []
       };
       
   

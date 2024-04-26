@@ -50,7 +50,7 @@ const io = require('socket.io')(server,{
 });
 
 const { joinRoomController, disconnectHandler } = require("./connectionHandler")(io, getTables, updateTables, getUserTracker, updateUserTracker);
-const { shuffleCard, playCardHandler, unplayCardHandler, onCallDecided } = require('./cardPlayHandler')(io, getTables, updateTables);
+const { shuffleCard, playCardHandler, unplayCardHandler, onCallDecided, onRoundComplete } = require('./cardPlayHandler')(io, getTables, updateTables);
 
 const onConnection = (socket) => {
 
@@ -79,6 +79,9 @@ const onConnection = (socket) => {
 
   // take actions after a call is decided by the users
   socket.on('callDecided', onCallDecided);
+
+  // perform actions after a round is complete
+  socket.on('roundComplete', onRoundComplete);
 };
 
 io.on("connection", onConnection);
