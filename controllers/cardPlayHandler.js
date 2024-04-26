@@ -71,7 +71,11 @@ module.exports = (io, getTables, updateTables)=>{
         let tables = getTables();
         let roomTable = tables.find(table=>table.roomId===roomId);
         roomTable.cardsOnTable.push(playedCard);
-        if(roomTable.cardsOnTable!=4){ // if more cards will be played in current round - select next - show cards on condition
+
+        roomTable.cards[playedCard.serial] = roomTable.cards[playedCard.serial].filter(
+            card=> card.cardType != playedCard.card.cardType || card.cardValue!= playedCard.card.cardValue)
+
+        if(roomTable.cardsOnTable.length!=4){ // if more cards will be played in current round - decide who plays next - show cards on condition
 
             // decide who will play next
             let nextPlayer = NextPlayer[playedCard.serial];
@@ -89,6 +93,7 @@ module.exports = (io, getTables, updateTables)=>{
                     serial: nextCards,
                     cards: roomTable.cards[nextCards]
                 }
+                roomTable.cardShown = true;
                 io.to(roomId).emit("show_cards", shownCards);
             }
             
@@ -107,6 +112,12 @@ module.exports = (io, getTables, updateTables)=>{
     const unplayCardHandler = async function(unplayedCard){
         const socket = this;
         roomId = socket.data.roomId;
+        let tables = getTables();
+        let roomTable = tables.find(table=>table.roomId===roomId);
+        roomTable.cardsOnTable.pop();
+        roomTable.cards[unplayedCard.serial].push(unplayedCard.card);
+        roomTable.whoPlayNext = unplayedCard.playedBy;
+        updateTables(tables);
         io.to(roomId).emit("unplayed_card", unplayedCard);
     };
 
