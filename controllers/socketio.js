@@ -1,8 +1,13 @@
 var fs = require('fs');
 const express = require('express');
+// var options = {
+//   key: fs.readFileSync(__dirname +'/../helpers/secrets/certs/cert.key'),
+//   cert: fs.readFileSync(__dirname +'/../helpers/secrets/certs/cert.crt')
+// };
+
 var options = {
-  key: fs.readFileSync(__dirname +'/../helpers/secrets/certs/cert.key'),
-  cert: fs.readFileSync(__dirname +'/../helpers/secrets/certs/cert.crt')
+  key: fs.readFileSync('/home/ec2-user/secrets/certs/cert.key'),
+  cert: fs.readFileSync('/home/ec2-user/secrets/certs/cert.crt')
 };
 const app = express();
 
