@@ -169,6 +169,8 @@ module.exports = (io, getTables, updateTables)=>{
         roomTable.cardsOnTable = [];
         roomTable.whoPlayNext = nextPlayer;
 
+        io.to(roomId).emit("update_points",roomTable.currentPoints);
+
         if(roomTable.currentRound===13){
             updateTables(tables);
             io.to(roomId).emit("get_updated_points", roomTable.currentPoints);
@@ -184,7 +186,7 @@ module.exports = (io, getTables, updateTables)=>{
             clearTable: roomTable.currentPoints // asks client to clear table as round is complete
         });
 
-        io.to(roomId).emit("update_points",roomTable.currentPoints);
+        
     }
 
     const onGameCompleted = async function(pointsUpdate){
