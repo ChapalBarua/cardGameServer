@@ -53,7 +53,9 @@ module.exports = (io, getTables, updateTables, getUserTracker, updateUserTracker
           team1: 0,
           team2: 0,
           setsTakenByTeam1: 0,
-          setsTakenByTeam2: 0
+          setsTakenByTeam2: 0,
+          activeGamesByTeam1: 0,
+          activeGamesByTeam2: 0
         },
         cardHistory: []
       };

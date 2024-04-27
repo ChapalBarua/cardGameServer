@@ -10,7 +10,6 @@ const app = express();
 tables = []; // this is the tracking data of all created rooms/tables
 
 const updateTables = function(inputTables){
-  console.log('someone changing table',tables);
   tables=inputTables;
 };
 
@@ -50,7 +49,7 @@ const io = require('socket.io')(server,{
 });
 
 const { joinRoomController, disconnectHandler } = require("./connectionHandler")(io, getTables, updateTables, getUserTracker, updateUserTracker);
-const { shuffleCard, playCardHandler, unplayCardHandler, onCallDecided, onRoundComplete } = require('./cardPlayHandler')(io, getTables, updateTables);
+const { shuffleCard, playCardHandler, unplayCardHandler, onCallDecided, onRoundComplete, onGameCompleted } = require('./cardPlayHandler')(io, getTables, updateTables);
 
 const onConnection = (socket) => {
 
@@ -82,6 +81,9 @@ const onConnection = (socket) => {
 
   // perform actions after a round is complete
   socket.on('roundComplete', onRoundComplete);
+
+  // update points and clear table after a game is completed
+  socket.on('completeGame', onGameCompleted);
 };
 
 io.on("connection", onConnection);

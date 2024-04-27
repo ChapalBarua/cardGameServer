@@ -167,15 +167,72 @@ module.exports = (io, getTables, updateTables)=>{
         }
         roomTable.cardHistory.push(roomTable.cardsOnTable);
         roomTable.cardsOnTable = [];
-        roomTable.currentRound++;
         roomTable.whoPlayNext = nextPlayer;
+
+        if(roomTable.currentRound===13){
+            updateTables(tables);
+            io.to(roomId).emit("get_updated_points", roomTable.currentPoints);
+            return;
+        }
+
+        roomTable.currentRound++;
         updateTables(tables);
 
         io.to(roomId).emit("next_player", {
             nextPlayer, 
             nextCards,
-            currentPoints: roomTable.currentPoints // update points and also indicates current round is complete
-        });        
+            clearTable: roomTable.currentPoints // asks client to clear table as round is complete
+        });
+
+        io.to(roomId).emit("update_points",roomTable.currentPoints);
+    }
+
+    const onGameCompleted = async function(pointsUpdate){
+        const socket = this;
+        let roomId = socket.data.roomId;
+        let tables = getTables();
+        let roomTable = tables.find(table=>table.roomId===roomId);
+
+        let currentPoints = roomTable.currentPoints;
+        currentPoints.team1 +=  pointsUpdate.team1;
+        currentPoints.team2 +=  pointsUpdate.team2;
+        currentPoints.setsTakenByTeam1 = 0;
+        currentPoints.setsTakenByTeam2 = 0;
+        currentPoints.activeGamesByTeam1 += pointsUpdate.activeGamesByTeam1;
+        currentPoints.activeGamesByTeam2 += pointsUpdate.activeGamesByTeam2;
+
+        if(currentPoints.activeGamesByTeam1===2){
+            currentPoints.activeGamesByTeam1=0;
+            currentPoints.activeGamesByTeam2=0;
+            currentPoints.team1 +=250;
+        }
+
+        if(currentPoints.activeGamesByTeam2===2){
+            currentPoints.activeGamesByTeam1=0;
+            currentPoints.activeGamesByTeam2=0;
+            currentPoints.team2 +=250;
+        }
+
+        roomTable.cards ={
+            one: [],
+            two: [],
+            three: [],
+            four: []
+        }
+
+        roomTable.cardShown = false;
+        roomTable.currentRound = 0;
+        roomTable.completedGame++;
+        roomTable.currentSetColor = '';
+        roomTable.whoSetColor = '';
+        roomTable.whoShowCards ='';
+        roomTable.currentCall = 0;
+        roomTable.whoPlayNext = '';
+        roomTable.cardHistory = [];
+
+        updateTables(tables);
+        io.to(roomId).emit("can_shuffle", true);
+        io.to(roomId).emit("update_points",roomTable.currentPoints);
     }
 
 
@@ -229,5 +286,5 @@ module.exports = (io, getTables, updateTables)=>{
         return faceCards.length > 0;
     };
 
-    return { shuffleCard, playCardHandler, unplayCardHandler, onCallDecided, onRoundComplete };
+    return { shuffleCard, playCardHandler, unplayCardHandler, onCallDecided, onRoundComplete, onGameCompleted };
 }
