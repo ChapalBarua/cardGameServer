@@ -55,6 +55,7 @@ const io = require('socket.io')(server,{
 
 const { joinRoomController, disconnectHandler } = require("./connectionHandler")(io, getTables, updateTables, getUserTracker, updateUserTracker);
 const { shuffleCard, playCardHandler, unplayCardHandler, onCallDecided, onRoundComplete, onGameCompleted } = require('./cardPlayHandler')(io, getTables, updateTables);
+const { startCallController, webrtcOfferHandler, webrtcAnswerHandler, webrtcIceCandidateHandler } = require('./webRTCHandler')(io);
 
 const onConnection = (socket) => {
 
@@ -89,6 +90,16 @@ const onConnection = (socket) => {
 
   // update points and clear table after a game is completed
   socket.on('completeGame', onGameCompleted);
+
+  /////// below functions are used by webrtc conectivity //////////
+
+  socket.on('start_call', startCallController);
+
+  socket.on('webrtc_offer', webrtcOfferHandler);
+
+  socket.on('webrtc_answer', webrtcAnswerHandler);
+
+  socket.on('webrtc_ice_candidate', webrtcIceCandidateHandler);
 };
 
 io.on("connection", onConnection);
