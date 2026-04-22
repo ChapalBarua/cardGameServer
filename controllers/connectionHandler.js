@@ -1,5 +1,48 @@
 module.exports = (io, getTables, updateTables, getUserTracker, updateUserTracker, emitActiveRooms)=>{
 
+  const removeUserFromRoom = function(socket, options = { countDisconnectedUser: false }) {
+    const roomId = socket.data.roomId;
+    if (!roomId) {
+      return;
+    }
+
+    let tables = getTables();
+    let userTracker = getUserTracker();
+
+    if (options.countDisconnectedUser) {
+      userTracker.connectedUsers--;
+      io.emit("user_disconnected", userTracker);
+    }
+
+    userTracker.activeUsers--;
+    io.emit("user_inactive", userTracker);
+
+    let userTable = tables.find(table=>table.roomId===roomId);
+    if (userTable) {
+      userTable.usersOnTable--;
+      if(userTable.usersOnTable===0){ // no user left in room
+        tables = tables.filter(table=>table.roomId!=roomId);
+      } else {
+        io.to(roomId).emit("can_shuffle", false);
+        
+        let serial = socket.data.serial;
+        let userName = socket.data.user;
+        userTable.players[serial] = 'player ' + serial;
+
+        socket.to(roomId).emit("user_left_room", userName, userTable.players);
+      }
+    }
+
+    socket.leave(roomId);
+    socket.data.roomId = undefined;
+    socket.data.serial = undefined;
+    socket.data.user = undefined;
+
+    updateTables(tables);
+    updateUserTracker(userTracker);
+    emitActiveRooms();
+  }
+
   // should not use await here. when multiple user connects disconnects at the same time - await creates issues - like skipping to second
   // user before first user is finished
   const joinRoomController = async function (payload){
@@ -115,45 +158,14 @@ module.exports = (io, getTables, updateTables, getUserTracker, updateUserTracker
   };
 
   const disconnectHandler = async function (reason){
-    socket = this;
-    roomId = socket.data.roomId;
-    // informs everyone that any user has disconnected from the server
-    let tables = getTables();
-    let userTracker = getUserTracker();
-    userTracker.connectedUsers--;
-    io.emit("user_disconnected", userTracker);
-    
-    if(roomId){
-      
-      // Global-actions-  informs everyone that a user has disconnected from any room
-      userTracker.activeUsers--;
-      io.emit("user_inactive", userTracker);
-
-      userTable = tables.find(table=>table.roomId===roomId);
-      userTable.usersOnTable--;
-      if(userTable.usersOnTable===0){ // no user left in room
-        tables = tables.filter(table=>table.roomId!=roomId);
-        updateTables(tables); // updating tables before returning
-        updateUserTracker(userTracker);
-        emitActiveRooms();
-        return;
-      }
-
-      // local (room) actions
-      io.to(roomId).emit("can_shuffle", false);
-      
-      let serial = socket.data.serial;
-      let userName = socket.data.user;
-      
-      userTable.players[serial] = 'player ' + serial;
-
-      // informs everyone in the same room that a user has disconnected from that room
-      socket.to(roomId).emit("user_left_room", userName, userTable.players);
-    }
-    updateTables(tables);
-    updateUserTracker(userTracker);
-    emitActiveRooms();
+    const socket = this;
+    removeUserFromRoom(socket, { countDisconnectedUser: true });
   };
 
-  return { joinRoomController, disconnectHandler }
+  const leaveRoomController = function (){
+    const socket = this;
+    removeUserFromRoom(socket, { countDisconnectedUser: false });
+  };
+
+  return { joinRoomController, leaveRoomController, disconnectHandler }
 }

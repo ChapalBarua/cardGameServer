@@ -68,7 +68,7 @@ const io = require('socket.io')(server,{
   }
 });
 
-const { joinRoomController, disconnectHandler } = require("./connectionHandler")(io, getTables, updateTables, getUserTracker, updateUserTracker, emitActiveRooms);
+const { joinRoomController, leaveRoomController, disconnectHandler } = require("./connectionHandler")(io, getTables, updateTables, getUserTracker, updateUserTracker, emitActiveRooms);
 const { shuffleCard, playCardHandler, unplayCardHandler, onCallDecided, onRoundComplete, onGameCompleted } = require('./cardPlayHandler')(io, getTables, updateTables);
 const { startCallController, webrtcOfferHandler, webrtcAnswerHandler, webrtcIceCandidateHandler } = require('./webRTCHandler')(io);
 
@@ -85,6 +85,7 @@ const onConnection = (socket) => {
 
   // joining to a room
   socket.on('join', joinRoomController);
+  socket.on('leave_room', leaveRoomController);
   socket.on('request_active_rooms', () => {
     socket.emit('active_rooms', getActiveRooms());
   });
