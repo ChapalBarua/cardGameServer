@@ -1,4 +1,4 @@
-module.exports = (io, getTables, updateTables, getUserTracker, updateUserTracker)=>{
+module.exports = (io, getTables, updateTables, getUserTracker, updateUserTracker, emitActiveRooms)=>{
 
   // should not use await here. when multiple user connects disconnects at the same time - await creates issues - like skipping to second
   // user before first user is finished
@@ -106,6 +106,7 @@ module.exports = (io, getTables, updateTables, getUserTracker, updateUserTracker
 
       // propagate updated table information to central data set table
       updateTables(tables);
+      emitActiveRooms();
       
     } else { // there is no spot in table
       console.log('user cant join in the room');
@@ -134,6 +135,7 @@ module.exports = (io, getTables, updateTables, getUserTracker, updateUserTracker
         tables = tables.filter(table=>table.roomId!=roomId);
         updateTables(tables); // updating tables before returning
         updateUserTracker(userTracker);
+        emitActiveRooms();
         return;
       }
 
@@ -150,6 +152,7 @@ module.exports = (io, getTables, updateTables, getUserTracker, updateUserTracker
     }
     updateTables(tables);
     updateUserTracker(userTracker);
+    emitActiveRooms();
   };
 
   return { joinRoomController, disconnectHandler }

@@ -35,6 +35,21 @@ const updateUserTracker = function(updatedUserTracker){
   userTracker = updatedUserTracker;
 }
 
+const getActiveRooms = function() {
+  return getTables()
+    .filter((table) => table.usersOnTable > 0)
+    .map((table) => ({
+      roomId: table.roomId,
+      usersOnTable: table.usersOnTable,
+      availableSeats: 4 - table.usersOnTable,
+      players: Object.values(table.players).filter((player) => !player.startsWith('player '))
+    }));
+}
+
+const emitActiveRooms = function(target = io) {
+  target.emit('active_rooms', getActiveRooms());
+}
+
 app.get('/tables', (req, res) => { // endpoint to be used to track data during development period
 
   // Send the tables as a response to the client
@@ -53,7 +68,7 @@ const io = require('socket.io')(server,{
   }
 });
 
-const { joinRoomController, disconnectHandler } = require("./connectionHandler")(io, getTables, updateTables, getUserTracker, updateUserTracker);
+const { joinRoomController, disconnectHandler } = require("./connectionHandler")(io, getTables, updateTables, getUserTracker, updateUserTracker, emitActiveRooms);
 const { shuffleCard, playCardHandler, unplayCardHandler, onCallDecided, onRoundComplete, onGameCompleted } = require('./cardPlayHandler')(io, getTables, updateTables);
 const { startCallController, webrtcOfferHandler, webrtcAnswerHandler, webrtcIceCandidateHandler } = require('./webRTCHandler')(io);
 
@@ -66,9 +81,13 @@ const onConnection = (socket) => {
 
   // notify connected user numbers to everyone after new user connects
   io.emit("user_connected", userTracker);
+  socket.emit('active_rooms', getActiveRooms());
 
   // joining to a room
   socket.on('join', joinRoomController);
+  socket.on('request_active_rooms', () => {
+    socket.emit('active_rooms', getActiveRooms());
+  });
 
   // shuffle 52 cards and distribute to players
   socket.on('shuffleCard', shuffleCard);
