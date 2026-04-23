@@ -1,14 +1,14 @@
 var fs = require('fs');
 const express = require('express');
-var options = {
-  key: fs.readFileSync(__dirname +'/../helpers/secrets/certs/cert.key'),
-  cert: fs.readFileSync(__dirname +'/../helpers/secrets/certs/cert.crt')
-};
+const path = require('path');
 
-// var options = {
-//   key: fs.readFileSync('/home/ec2-user/secrets/certs/cert.key'),
-//   cert: fs.readFileSync('/home/ec2-user/secrets/certs/cert.crt')
-// };
+const localCertPath = path.join(__dirname, '../helpers/secrets/certs');
+const productionCertPath = '/home/ec2-user/secrets/certs';
+const certPath = fs.existsSync(path.join(localCertPath, 'cert.key')) ? localCertPath : productionCertPath;
+const options = {
+  key: fs.readFileSync(path.join(certPath, 'cert.key')),
+  cert: fs.readFileSync(path.join(certPath, 'cert.crt'))
+};
 const app = express();
 
 
@@ -22,11 +22,6 @@ const getTables = function(){
   return structuredClone(tables);
 }
 
-userTracker = { // this is the tracking data of all connected users and active users(joined in room/table)
-  connectedUsers : 0,
-  activeUsers : 0
-};
-
 const getLiveUserTracker = function(excludedSocketId) {
   const sockets = Array.from(io.of('/').sockets.values())
     .filter(socket => socket.id !== excludedSocketId);
@@ -38,10 +33,6 @@ const getLiveUserTracker = function(excludedSocketId) {
 
 const getUserTracker = function(excludedSocketId){
   return getLiveUserTracker(excludedSocketId);
-}
-
-const updateUserTracker = function(updatedUserTracker){
-  userTracker = updatedUserTracker;
 }
 
 const getActiveRooms = function() {
@@ -77,7 +68,7 @@ const io = require('socket.io')(server,{
   }
 });
 
-const { joinRoomController, leaveRoomController, disconnectHandler } = require("./connectionHandler")(io, getTables, updateTables, getUserTracker, updateUserTracker, emitActiveRooms);
+const { joinRoomController, leaveRoomController, disconnectHandler } = require("./connectionHandler")(io, getTables, updateTables, getUserTracker, emitActiveRooms);
 const { shuffleCard, playCardHandler, unplayCardHandler, onCallDecided, onRoundComplete, onGameCompleted } = require('./cardPlayHandler')(io, getTables, updateTables);
 const { startCallController, webrtcOfferHandler, webrtcAnswerHandler, webrtcIceCandidateHandler } = require('./webRTCHandler')(io);
 

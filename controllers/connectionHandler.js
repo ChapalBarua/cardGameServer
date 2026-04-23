@@ -1,4 +1,4 @@
-module.exports = (io, getTables, updateTables, getUserTracker, updateUserTracker, emitActiveRooms)=>{
+module.exports = (io, getTables, updateTables, getUserTracker, emitActiveRooms)=>{
 
   const removeUserFromRoom = function(socket, options = { countDisconnectedUser: false }) {
     const roomId = socket.data.roomId;
