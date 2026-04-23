@@ -1,14 +1,14 @@
 var fs = require('fs');
 const express = require('express');
-// var options = {
-//   key: fs.readFileSync(__dirname +'/../helpers/secrets/certs/cert.key'),
-//   cert: fs.readFileSync(__dirname +'/../helpers/secrets/certs/cert.crt')
-// };
-
 var options = {
-  key: fs.readFileSync('/home/ec2-user/secrets/certs/cert.key'),
-  cert: fs.readFileSync('/home/ec2-user/secrets/certs/cert.crt')
+  key: fs.readFileSync(__dirname +'/../helpers/secrets/certs/cert.key'),
+  cert: fs.readFileSync(__dirname +'/../helpers/secrets/certs/cert.crt')
 };
+
+// var options = {
+//   key: fs.readFileSync('/home/ec2-user/secrets/certs/cert.key'),
+//   cert: fs.readFileSync('/home/ec2-user/secrets/certs/cert.crt')
+// };
 const app = express();
 
 
@@ -27,8 +27,17 @@ userTracker = { // this is the tracking data of all connected users and active u
   activeUsers : 0
 };
 
-const getUserTracker = function(){
-  return structuredClone(userTracker);
+const getLiveUserTracker = function(excludedSocketId) {
+  const sockets = Array.from(io.of('/').sockets.values())
+    .filter(socket => socket.id !== excludedSocketId);
+  return {
+    connectedUsers: sockets.length,
+    activeUsers: sockets.filter(socket => Boolean(socket.data.roomId)).length
+  };
+}
+
+const getUserTracker = function(excludedSocketId){
+  return getLiveUserTracker(excludedSocketId);
 }
 
 const updateUserTracker = function(updatedUserTracker){
@@ -74,13 +83,8 @@ const { startCallController, webrtcOfferHandler, webrtcAnswerHandler, webrtcIceC
 
 const onConnection = (socket) => {
 
-  // keep track of users connected
-  let userTracker = getUserTracker();
-  userTracker.connectedUsers++;
-  updateUserTracker(userTracker);
-
   // notify connected user numbers to everyone after new user connects
-  io.emit("user_connected", userTracker);
+  io.emit("user_connected", getUserTracker());
   socket.emit('active_rooms', getActiveRooms());
 
   // joining to a room
@@ -88,6 +92,7 @@ const onConnection = (socket) => {
   socket.on('leave_room', leaveRoomController);
   socket.on('request_active_rooms', () => {
     socket.emit('active_rooms', getActiveRooms());
+    socket.emit('user_connected', getUserTracker());
   });
 
   // shuffle 52 cards and distribute to players

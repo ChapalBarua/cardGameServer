@@ -3,19 +3,13 @@ module.exports = (io, getTables, updateTables, getUserTracker, updateUserTracker
   const removeUserFromRoom = function(socket, options = { countDisconnectedUser: false }) {
     const roomId = socket.data.roomId;
     if (!roomId) {
+      if (options.countDisconnectedUser) {
+        io.emit("user_disconnected", getUserTracker(socket.id));
+      }
       return;
     }
 
     let tables = getTables();
-    let userTracker = getUserTracker();
-
-    if (options.countDisconnectedUser) {
-      userTracker.connectedUsers--;
-      io.emit("user_disconnected", userTracker);
-    }
-
-    userTracker.activeUsers--;
-    io.emit("user_inactive", userTracker);
 
     let userTable = tables.find(table=>table.roomId===roomId);
     if (userTable) {
@@ -39,7 +33,8 @@ module.exports = (io, getTables, updateTables, getUserTracker, updateUserTracker
     socket.data.user = undefined;
 
     updateTables(tables);
-    updateUserTracker(userTracker);
+    const userTracker = getUserTracker(options.countDisconnectedUser ? socket.id : undefined);
+    io.emit(options.countDisconnectedUser ? "user_disconnected" : "user_inactive", userTracker);
     emitActiveRooms();
   }
 
@@ -58,14 +53,7 @@ module.exports = (io, getTables, updateTables, getUserTracker, updateUserTracker
 
       let userTable;
       let tables = getTables();
-      let userTracker = getUserTracker();
       let serial = 'one';
-
-      // notify active user numbers to everyone after new user connects
-      userTracker.activeUsers++;
-      updateUserTracker(userTracker);
-
-      io.emit("user_active", userTracker);
 
       // table for the room
       userTable = {
@@ -142,6 +130,9 @@ module.exports = (io, getTables, updateTables, getUserTracker, updateUserTracker
       socket.data.user = userName;
       socket.data.roomId = roomId;
       socket.data.serial = serial;
+
+      // notify active user numbers to everyone after the socket is marked active
+      io.emit("user_active", getUserTracker());
 
       if(userTable.usersOnTable === 4){
         io.to(roomId).emit("can_shuffle", true);
