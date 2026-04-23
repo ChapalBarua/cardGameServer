@@ -4,7 +4,7 @@ const path = require('path');
 
 const localCertPath = path.join(__dirname, '../helpers/secrets/certs');
 const productionCertPath = '/home/ec2-user/secrets/certs';
-const certPath = fs.existsSync(path.join(localCertPath, 'cert.key')) ? localCertPath : productionCertPath;
+const certPath = fs.existsSync(path.join(productionCertPath, 'cert.key')) ? productionCertPath : localCertPath;
 const options = {
   key: fs.readFileSync(path.join(certPath, 'cert.key')),
   cert: fs.readFileSync(path.join(certPath, 'cert.crt'))
