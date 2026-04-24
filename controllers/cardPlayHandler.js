@@ -37,6 +37,12 @@ module.exports = (io, getTables, updateTables)=>{
             roomTable.cards[socketSerial] = assignedCardsToClients;
             index++;
         }
+        roomTable.trickStartingHands = {
+            one: [],
+            two: [],
+            three: [],
+            four: []
+        };
         updateTables(tables);
     };
 
@@ -74,6 +80,15 @@ module.exports = (io, getTables, updateTables)=>{
         roomId = socket.data.roomId;
         let tables = getTables();
         let roomTable = tables.find(table=>table.roomId===roomId);
+
+        if(!roomTable || !isValidPlay(socket, roomTable, playedCard)){
+            return;
+        }
+
+        if(roomTable.cardsOnTable.length === 0){
+            roomTable.trickStartingHands = cloneHands(roomTable.cards);
+        }
+
         roomTable.cardsOnTable.push(playedCard);
 
         roomTable.cards[playedCard.serial] = roomTable.cards[playedCard.serial].filter(
@@ -121,6 +136,14 @@ module.exports = (io, getTables, updateTables)=>{
         roomTable.cardsOnTable.pop();
         roomTable.cards[unplayedCard.serial].push(unplayedCard.card);
         roomTable.whoPlayNext = unplayedCard.playedBy;
+        if(roomTable.cardsOnTable.length === 0){
+            roomTable.trickStartingHands = {
+                one: [],
+                two: [],
+                three: [],
+                four: []
+            };
+        }
         updateTables(tables);
         io.to(roomId).emit("unplayed_card", unplayedCard);
     };
@@ -167,6 +190,12 @@ module.exports = (io, getTables, updateTables)=>{
         }
         roomTable.cardHistory.push(roomTable.cardsOnTable);
         roomTable.cardsOnTable = [];
+        roomTable.trickStartingHands = {
+            one: [],
+            two: [],
+            three: [],
+            four: []
+        };
         roomTable.whoPlayNext = nextPlayer;
 
         io.to(roomId).emit("update_points",roomTable.currentPoints);
@@ -231,6 +260,12 @@ module.exports = (io, getTables, updateTables)=>{
         roomTable.currentCall = 0;
         roomTable.whoPlayNext = '';
         roomTable.cardHistory = [];
+        roomTable.trickStartingHands = {
+            one: [],
+            two: [],
+            three: [],
+            four: []
+        };
 
         updateTables(tables);
         io.to(roomId).emit("can_shuffle", true);
@@ -243,6 +278,73 @@ module.exports = (io, getTables, updateTables)=>{
      */
     function getValue(playedCardvalue){
         return cardValues.findIndex(value=>value===playedCardvalue);
+    }
+
+    function cloneHands(cards){
+        return {
+            one: [...cards.one],
+            two: [...cards.two],
+            three: [...cards.three],
+            four: [...cards.four]
+        };
+    }
+
+    function hasCard(cards, targetCard){
+        return cards.some(card=>
+            card.cardType === targetCard.cardType && card.cardValue === targetCard.cardValue);
+    }
+
+    function hasSuit(cards, cardType){
+        return cards.some(card=>card.cardType === cardType);
+    }
+
+    function emitInvalidPlay(socket, reason){
+        socket.emit("invalid_card_play", { reason });
+    }
+
+    function canControlHand(roomTable, playedBy, serial){
+        if(playedBy === serial){
+            return true;
+        }
+
+        return playedBy === roomTable.whoSetColor && serial === roomTable.whoShowCards;
+    }
+
+    function isValidPlay(socket, roomTable, playedCard){
+        if(socket.data.serial !== playedCard.playedBy){
+            emitInvalidPlay(socket, "You cannot play on behalf of another controller.");
+            return false;
+        }
+
+        if(roomTable.whoPlayNext && roomTable.whoPlayNext !== playedCard.playedBy){
+            emitInvalidPlay(socket, "It is not your turn.");
+            return false;
+        }
+
+        if(!canControlHand(roomTable, playedCard.playedBy, playedCard.serial)){
+            emitInvalidPlay(socket, "You cannot play that hand right now.");
+            return false;
+        }
+
+        const playerCards = roomTable.cards[playedCard.serial] || [];
+        if(!hasCard(playerCards, playedCard.card)){
+            emitInvalidPlay(socket, "That card is not in your hand.");
+            return false;
+        }
+
+        if(roomTable.cardsOnTable.length === 0){
+            return true;
+        }
+
+        const leadCardType = roomTable.cardsOnTable[0].card.cardType;
+        const playerStartingHand = roomTable.trickStartingHands[playedCard.serial] || playerCards;
+
+        if(hasSuit(playerStartingHand, leadCardType) && playedCard.card.cardType !== leadCardType){
+            emitInvalidPlay(socket, "You must follow the lead suit if you had it at the start of the trick.");
+            return false;
+        }
+
+        return true;
     }
 
     /**

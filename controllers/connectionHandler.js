@@ -88,7 +88,13 @@ module.exports = (io, getTables, updateTables, getUserTracker, emitActiveRooms)=
           activeGamesByTeam1: 0,
           activeGamesByTeam2: 0
         },
-        cardHistory: []
+        cardHistory: [],
+        trickStartingHands: {
+          one: [],
+          two: [],
+          three: [],
+          four: []
+        }
       };
       
   
