@@ -75,6 +75,7 @@ module.exports = (io, getTables, updateTables, getUserTracker, emitActiveRooms)=
         currentRound: 0, // running round out of 13 card set (4*13)
         completedGame: 0, // how many games are completed
         currentSetColor: '',
+        setColorBroken: false,
         whoSetColor: '', //('one', 'two', 'three', 'four'),
         whoShowCards: '', //('one', 'two', 'three', 'four'),
         currentCall: 0, // 1,2,3,4,5,6,7

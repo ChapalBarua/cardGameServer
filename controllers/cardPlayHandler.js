@@ -43,6 +43,7 @@ module.exports = (io, getTables, updateTables)=>{
             three: [],
             four: []
         };
+        roomTable.setColorBroken = false;
         updateTables(tables);
     };
 
@@ -57,6 +58,7 @@ module.exports = (io, getTables, updateTables)=>{
         roomTable.whoSetColor = decidedCall.personCalled;
         roomTable.currentCall = decidedCall.call;
         roomTable.currentSetColor = decidedCall.color;
+        roomTable.setColorBroken = false;
         roomTable.whoShowCards = inactivePlayer[decidedCall.personCalled];
         roomTable.whoPlayNext = NextPlayer[ decidedCall.personCalled];
         roomTable.currentRound++;
@@ -93,6 +95,9 @@ module.exports = (io, getTables, updateTables)=>{
 
         roomTable.cards[playedCard.serial] = roomTable.cards[playedCard.serial].filter(
             card=> card.cardType != playedCard.card.cardType || card.cardValue!= playedCard.card.cardValue)
+        if(!roomTable.setColorBroken && playedCard.card.cardType === roomTable.currentSetColor){
+            roomTable.setColorBroken = true;
+        }
 
         if(roomTable.cardsOnTable.length!=4){ // if more cards will be played in current round - decide who plays next - show cards on condition
 
@@ -106,8 +111,8 @@ module.exports = (io, getTables, updateTables)=>{
 
             roomTable.whoPlayNext = nextPlayer;
 
-            // first round - after first card play -cards will be shown
-            if(roomTable.currentRound===1 && roomTable.cardsOnTable.length ===1){
+            // show the caller's partner hand after the first accepted play of the game
+            if(!roomTable.cardShown && roomTable.cardsOnTable.length ===1){
                 let shownCards = {
                     serial: nextCards,
                     cards: roomTable.cards[nextCards]
@@ -136,7 +141,9 @@ module.exports = (io, getTables, updateTables)=>{
         roomTable.cardsOnTable.pop();
         roomTable.cards[unplayedCard.serial].push(unplayedCard.card);
         roomTable.whoPlayNext = unplayedCard.playedBy;
+        roomTable.setColorBroken = computeSetColorBroken(roomTable);
         if(roomTable.cardsOnTable.length === 0){
+            roomTable.cardShown = false;
             roomTable.trickStartingHands = {
                 one: [],
                 two: [],
@@ -255,6 +262,7 @@ module.exports = (io, getTables, updateTables)=>{
         roomTable.currentRound = 0;
         roomTable.completedGame++;
         roomTable.currentSetColor = '';
+        roomTable.setColorBroken = false;
         roomTable.whoSetColor = '';
         roomTable.whoShowCards ='';
         roomTable.currentCall = 0;
@@ -298,6 +306,10 @@ module.exports = (io, getTables, updateTables)=>{
         return cards.some(card=>card.cardType === cardType);
     }
 
+    function onlyHasSuit(cards, cardType){
+        return cards.length > 0 && cards.every(card=>card.cardType === cardType);
+    }
+
     function emitInvalidPlay(socket, reason){
         socket.emit("invalid_card_play", { reason });
     }
@@ -312,7 +324,7 @@ module.exports = (io, getTables, updateTables)=>{
 
     function isValidPlay(socket, roomTable, playedCard){
         if(socket.data.serial !== playedCard.playedBy){
-            emitInvalidPlay(socket, "You cannot play on behalf of another controller.");
+            emitInvalidPlay(socket, "You cannot play on behalf of another player.");
             return false;
         }
 
@@ -333,6 +345,16 @@ module.exports = (io, getTables, updateTables)=>{
         }
 
         if(roomTable.cardsOnTable.length === 0){
+            if(
+                roomTable.currentSetColor &&
+                playedCard.card.cardType === roomTable.currentSetColor &&
+                !roomTable.setColorBroken &&
+                !onlyHasSuit(playerCards, roomTable.currentSetColor)
+            ){
+                emitInvalidPlay(socket, "You cannot play the set color until it is broken or unless your hand only has set color left.");
+                return false;
+            }
+
             return true;
         }
 
@@ -345,6 +367,15 @@ module.exports = (io, getTables, updateTables)=>{
         }
 
         return true;
+    }
+
+    function computeSetColorBroken(roomTable){
+        if(!roomTable.currentSetColor){
+            return false;
+        }
+
+        return [...roomTable.cardHistory, roomTable.cardsOnTable].some(trick=>
+            trick.some(playedCard=>playedCard.card.cardType === roomTable.currentSetColor));
     }
 
     /**
