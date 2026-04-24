@@ -25,36 +25,14 @@ module.exports = (io, getTables, updateTables)=>{
 
     const shuffleCard = async function(){
         const socket = this;
-        let cards = getShuffledCardsDeck();
-        let distributedCards = [cards.slice(0,13), cards.slice(13,26), cards.slice(26,39), cards.slice(39,52)];
         let roomId = socket.data.roomId;
         let tables = getTables();
-        const roomClients = io.sockets.adapter.rooms.get(roomId) || new Set();
         let roomTable = tables.find(table=>table.roomId===roomId);
-        let index = 0;
-        for (const clientId of roomClients) {
-            // getting all the sockets/players in the room
-            const clientSocket = io.sockets.sockets.get(clientId);
-            socketSerial = clientSocket.data.serial;
-
-            // sending the shuffled cards to individual player
-            assignedCardsToClients = distributedCards[index];
-            clientSocket.emit('distribute_cards', assignedCardsToClients);
-
-            // keeping records of distributed card in table
-            roomTable.cards[socketSerial] = assignedCardsToClients;
-            index++;
+        if(!roomTable){
+            return;
         }
-        roomTable.trickStartingHands = {
-            one: [],
-            two: [],
-            three: [],
-            four: []
-        };
-        roomTable.setColorBroken = false;
-        roomTable.biddingActivePlayer = 'one';
-        roomTable.biddingHighestBid = null;
-        roomTable.biddingPasses = 0;
+
+        distributeCardsToRoom(roomId, roomTable);
         updateTables(tables);
 
         emitBiddingState(roomId, roomTable);
@@ -79,14 +57,23 @@ module.exports = (io, getTables, updateTables)=>{
         }
 
         if(decidedCall.pass){
-            if(!roomTable.biddingHighestBid){
-                emitInvalidBid(socket, "The opening bidder must make a bid.");
+            roomTable.biddingDisplay[bidder] = 'Pass';
+            roomTable.biddingPasses++;
+
+            if(!roomTable.biddingHighestBid && roomTable.biddingPasses >= 4){
+                applyPassOutPenalty(roomTable, bidder);
+                io.to(roomId).emit("bidding_passed_out", {
+                    penalizedBidder: bidder,
+                    message: `${roomTable.players[bidder]} passed out the hand. Team penalized -50. Redealing.`
+                });
+                distributeCardsToRoom(roomId, roomTable);
+                updateTables(tables);
+                io.to(roomId).emit("update_points", roomTable.currentPoints);
+                emitBiddingState(roomId, roomTable);
                 return;
             }
 
-            roomTable.biddingPasses++;
-
-            if(roomTable.biddingPasses >= 3){
+            if(roomTable.biddingHighestBid && roomTable.biddingPasses >= 3){
                 finalizeBid(roomId, roomTable);
                 updateTables(tables);
                 return;
@@ -104,6 +91,7 @@ module.exports = (io, getTables, updateTables)=>{
             }
 
             roomTable.biddingHighestBid = proposedBid;
+            roomTable.biddingDisplay[bidder] = formatBid(proposedBid);
             roomTable.biddingPasses = 0;
         }
 
@@ -299,9 +287,15 @@ module.exports = (io, getTables, updateTables)=>{
         roomTable.completedGame++;
         roomTable.currentSetColor = '';
         roomTable.setColorBroken = false;
-        roomTable.biddingActivePlayer = 'one';
+        roomTable.biddingActivePlayer = getOpeningBidder(roomTable.completedGame);
         roomTable.biddingHighestBid = null;
         roomTable.biddingPasses = 0;
+        roomTable.biddingDisplay = {
+            one: '',
+            two: '',
+            three: '',
+            four: ''
+        };
         roomTable.whoSetColor = '';
         roomTable.whoShowCards ='';
         roomTable.currentCall = 0;
@@ -357,6 +351,63 @@ module.exports = (io, getTables, updateTables)=>{
         socket.emit("invalid_bid", { reason });
     }
 
+    function getOpeningBidder(completedGame){
+        return ['one', 'two', 'three', 'four'][completedGame % 4];
+    }
+
+    function resetBiddingState(roomTable){
+        roomTable.trickStartingHands = {
+            one: [],
+            two: [],
+            three: [],
+            four: []
+        };
+        roomTable.cardShown = false;
+        roomTable.currentRound = 0;
+        roomTable.currentSetColor = '';
+        roomTable.setColorBroken = false;
+        roomTable.whoSetColor = '';
+        roomTable.whoShowCards = '';
+        roomTable.currentCall = 0;
+        roomTable.whoPlayNext = '';
+        roomTable.cardHistory = [];
+        roomTable.biddingActivePlayer = getOpeningBidder(roomTable.completedGame);
+        roomTable.biddingHighestBid = null;
+        roomTable.biddingPasses = 0;
+        roomTable.biddingDisplay = {
+            one: '',
+            two: '',
+            three: '',
+            four: ''
+        };
+    }
+
+    function distributeCardsToRoom(roomId, roomTable){
+        const cards = getShuffledCardsDeck();
+        const distributedCards = [cards.slice(0,13), cards.slice(13,26), cards.slice(26,39), cards.slice(39,52)];
+        const roomClients = io.sockets.adapter.rooms.get(roomId) || new Set();
+        let index = 0;
+
+        resetBiddingState(roomTable);
+
+        for (const clientId of roomClients) {
+            const clientSocket = io.sockets.sockets.get(clientId);
+            socketSerial = clientSocket.data.serial;
+            assignedCardsToClients = distributedCards[index];
+            clientSocket.emit('distribute_cards', assignedCardsToClients);
+            roomTable.cards[socketSerial] = assignedCardsToClients;
+            index++;
+        }
+    }
+
+    function applyPassOutPenalty(roomTable, bidder){
+        if(bidder === 'one' || bidder === 'three'){
+            roomTable.currentPoints.team1 -= 50;
+        }else {
+            roomTable.currentPoints.team2 -= 50;
+        }
+    }
+
     function isHigherBid(proposedBid, currentBid){
         if(
             !Number.isInteger(proposedBid.call) ||
@@ -396,7 +447,8 @@ module.exports = (io, getTables, updateTables)=>{
             nextBidder: roomTable.biddingActivePlayer,
             highestBid: roomTable.biddingHighestBid,
             consecutivePasses: roomTable.biddingPasses,
-            canPass: Boolean(roomTable.biddingHighestBid)
+            canPass: Boolean(roomTable.biddingHighestBid),
+            playerBids: roomTable.biddingDisplay
         });
         io.to(roomId).emit("standing_call", formatBid(roomTable.biddingHighestBid));
     }
@@ -416,6 +468,12 @@ module.exports = (io, getTables, updateTables)=>{
         roomTable.currentRound++;
         roomTable.biddingActivePlayer = '';
         roomTable.biddingPasses = 0;
+        roomTable.biddingDisplay = {
+            one: '',
+            two: '',
+            three: '',
+            four: ''
+        };
 
         io.to(roomId).emit("bidding_state", null);
         io.to(roomId).emit("standing_call", formatBid(winningBid));
