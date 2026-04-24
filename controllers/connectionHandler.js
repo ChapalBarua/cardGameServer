@@ -64,6 +64,12 @@ module.exports = (io, getTables, updateTables, getUserTracker, emitActiveRooms)=
           three: [],
           four: []
         },
+        initialHands: {
+          one: [],
+          two: [],
+          three: [],
+          four: []
+        },
         players: {
           one: 'player one',
           two: 'player two',

@@ -69,7 +69,7 @@ const io = require('socket.io')(server,{
 });
 
 const { joinRoomController, leaveRoomController, disconnectHandler } = require("./connectionHandler")(io, getTables, updateTables, getUserTracker, emitActiveRooms);
-const { shuffleCard, playCardHandler, unplayCardHandler, onCallDecided, onRoundComplete, onGameCompleted } = require('./cardPlayHandler')(io, getTables, updateTables);
+const { shuffleCard, playCardHandler, onCallDecided, onRoundComplete, onGameCompleted } = require('./cardPlayHandler')(io, getTables, updateTables);
 const { startCallController, webrtcOfferHandler, webrtcAnswerHandler, webrtcIceCandidateHandler } = require('./webRTCHandler')(io);
 
 const onConnection = (socket) => {
@@ -91,9 +91,6 @@ const onConnection = (socket) => {
 
   // play a particular card
   socket.on('playCard', playCardHandler);
-
-  // unplay a particular card
-  socket.on('unplayCard', unplayCardHandler);
 
   // notify connected user numbers to everyone after a user disconnects
   socket.on('disconnect', disconnectHandler);

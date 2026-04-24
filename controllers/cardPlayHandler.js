@@ -23,6 +23,14 @@ module.exports = (io, getTables, updateTables)=>{
         nt: 4
     };
 
+    const gamePointValue = {
+        clubs: 6,
+        diamonds: 7,
+        hearts: 8,
+        spades: 9,
+        nt: 10
+    };
+
     const shuffleCard = async function(){
         const socket = this;
         let roomId = socket.data.roomId;
@@ -154,31 +162,6 @@ module.exports = (io, getTables, updateTables)=>{
         updateTables(tables);
         io.to(roomId).emit("played_card", playedCard);
     };
-
-
-    // notifies everyone when a player unplays a card
-    const unplayCardHandler = async function(unplayedCard){
-        const socket = this;
-        roomId = socket.data.roomId;
-        let tables = getTables();
-        let roomTable = tables.find(table=>table.roomId===roomId);
-        roomTable.cardsOnTable.pop();
-        roomTable.cards[unplayedCard.serial].push(unplayedCard.card);
-        roomTable.whoPlayNext = unplayedCard.playedBy;
-        roomTable.setColorBroken = computeSetColorBroken(roomTable);
-        if(roomTable.cardsOnTable.length === 0){
-            roomTable.cardShown = false;
-            roomTable.trickStartingHands = {
-                one: [],
-                two: [],
-                three: [],
-                four: []
-            };
-        }
-        updateTables(tables);
-        io.to(roomId).emit("unplayed_card", unplayedCard);
-    };
-
     // perform actions when a round is complete
     const onRoundComplete = async function(){
         const socket = this;
@@ -232,8 +215,11 @@ module.exports = (io, getTables, updateTables)=>{
         io.to(roomId).emit("update_points",roomTable.currentPoints);
 
         if(roomTable.currentRound===13){
+            const scoringSummary = settleCompletedGame(roomTable);
             updateTables(tables);
-            io.to(roomId).emit("get_updated_points", roomTable.currentPoints);
+            io.to(roomId).emit("game_scored", scoringSummary);
+            io.to(roomId).emit("can_shuffle", true);
+            io.to(roomId).emit("update_points", roomTable.currentPoints);
             return;
         }
 
@@ -275,12 +261,8 @@ module.exports = (io, getTables, updateTables)=>{
             currentPoints.team2 +=250;
         }
 
-        roomTable.cards ={
-            one: [],
-            two: [],
-            three: [],
-            four: []
-        }
+        roomTable.cards = getBlankHands();
+        roomTable.initialHands = getBlankHands();
 
         roomTable.cardShown = false;
         roomTable.currentRound = 0;
@@ -301,12 +283,7 @@ module.exports = (io, getTables, updateTables)=>{
         roomTable.currentCall = 0;
         roomTable.whoPlayNext = '';
         roomTable.cardHistory = [];
-        roomTable.trickStartingHands = {
-            one: [],
-            two: [],
-            three: [],
-            four: []
-        };
+        roomTable.trickStartingHands = getBlankHands();
 
         updateTables(tables);
         io.to(roomId).emit("can_shuffle", true);
@@ -327,6 +304,15 @@ module.exports = (io, getTables, updateTables)=>{
             two: [...cards.two],
             three: [...cards.three],
             four: [...cards.four]
+        };
+    }
+
+    function getBlankHands(){
+        return {
+            one: [],
+            two: [],
+            three: [],
+            four: []
         };
     }
 
@@ -396,6 +382,7 @@ module.exports = (io, getTables, updateTables)=>{
             assignedCardsToClients = distributedCards[index];
             clientSocket.emit('distribute_cards', assignedCardsToClients);
             roomTable.cards[socketSerial] = assignedCardsToClients;
+            roomTable.initialHands[socketSerial] = [...assignedCardsToClients];
             index++;
         }
     }
@@ -406,6 +393,190 @@ module.exports = (io, getTables, updateTables)=>{
         }else {
             roomTable.currentPoints.team2 -= 50;
         }
+    }
+
+    function isTeamOne(serial){
+        return serial === 'one' || serial === 'three';
+    }
+
+    function getCallerTricks(roomTable){
+        return isTeamOne(roomTable.whoSetColor)
+            ? roomTable.currentPoints.setsTakenByTeam1
+            : roomTable.currentPoints.setsTakenByTeam2;
+    }
+
+    function countMatchingCards(cards, matcher){
+        return cards.filter(matcher).length;
+    }
+
+    function getHighestCountSerial(counts){
+        return Object.keys(counts).reduce((bestSerial, currentSerial)=>
+            counts[currentSerial] > counts[bestSerial] ? currentSerial : bestSerial
+        );
+    }
+
+    function getHonorsPoints(roomTable){
+        if(roomTable.currentSetColor === 'nt'){
+            const aceCounts = {
+                one: countMatchingCards(roomTable.initialHands.one, card=>card.cardValue === 'ace'),
+                two: countMatchingCards(roomTable.initialHands.two, card=>card.cardValue === 'ace'),
+                three: countMatchingCards(roomTable.initialHands.three, card=>card.cardValue === 'ace'),
+                four: countMatchingCards(roomTable.initialHands.four, card=>card.cardValue === 'ace')
+            };
+
+            const maxAceHolder = Math.max(...Object.values(aceCounts));
+            if(maxAceHolder === 4){
+                return isTeamOne(getHighestCountSerial(aceCounts)) ? { team1: 80, team2: 0 } : { team1: 0, team2: 80 };
+            }
+
+            const team1Aces = aceCounts.one + aceCounts.three;
+            const team2Aces = aceCounts.two + aceCounts.four;
+
+            if(team1Aces === team2Aces){
+                return { team1: 0, team2: 0 };
+            }
+
+            return team1Aces > team2Aces
+                ? { team1: team1Aces * 10, team2: 0 }
+                : { team1: 0, team2: team2Aces * 10 };
+        }
+
+        const honorValues = new Set(['ace', 'king', 'queen', 'jack', '10']);
+        const honorCounts = {
+            one: countMatchingCards(roomTable.initialHands.one, card=>card.cardType === roomTable.currentSetColor && honorValues.has(card.cardValue)),
+            two: countMatchingCards(roomTable.initialHands.two, card=>card.cardType === roomTable.currentSetColor && honorValues.has(card.cardValue)),
+            three: countMatchingCards(roomTable.initialHands.three, card=>card.cardType === roomTable.currentSetColor && honorValues.has(card.cardValue)),
+            four: countMatchingCards(roomTable.initialHands.four, card=>card.cardType === roomTable.currentSetColor && honorValues.has(card.cardValue))
+        };
+
+        const maxHonorHolder = Math.max(...Object.values(honorCounts));
+        if(maxHonorHolder === 5){
+            return isTeamOne(getHighestCountSerial(honorCounts)) ? { team1: 100, team2: 0 } : { team1: 0, team2: 100 };
+        }
+
+        if(maxHonorHolder === 4){
+            return isTeamOne(getHighestCountSerial(honorCounts)) ? { team1: 80, team2: 0 } : { team1: 0, team2: 80 };
+        }
+
+        const team1Honors = honorCounts.one + honorCounts.three;
+        const team2Honors = honorCounts.two + honorCounts.four;
+
+        if(team1Honors === team2Honors){
+            return { team1: 0, team2: 0 };
+        }
+
+        return team1Honors > team2Honors
+            ? { team1: team1Honors * 10, team2: 0 }
+            : { team1: 0, team2: team2Honors * 10 };
+    }
+
+    function getGamePoints(roomTable){
+        const callerTricks = getCallerTricks(roomTable);
+        const expectedTricks = 6 + roomTable.currentCall;
+
+        if(callerTricks < expectedTricks){
+            const penalty = -50 * (expectedTricks - callerTricks);
+            return isTeamOne(roomTable.whoSetColor)
+                ? { team1: penalty, team2: 0 }
+                : { team1: 0, team2: penalty };
+        }
+
+        const points = (callerTricks - 6) * gamePointValue[roomTable.currentSetColor];
+        return isTeamOne(roomTable.whoSetColor)
+            ? { team1: points, team2: 0 }
+            : { team1: 0, team2: points };
+    }
+
+    function settleCompletedGame(roomTable){
+        const honorsPoints = getHonorsPoints(roomTable);
+        const gamePoints = getGamePoints(roomTable);
+        const callerIsTeamOne = isTeamOne(roomTable.whoSetColor);
+        const summary = {
+            honorsPoints,
+            gamePoints,
+            message: buildGameScoringMessage(roomTable, honorsPoints, gamePoints)
+        };
+
+        roomTable.currentPoints.team1 += honorsPoints.team1 + gamePoints.team1;
+        roomTable.currentPoints.team2 += honorsPoints.team2 + gamePoints.team2;
+
+        if(callerIsTeamOne && gamePoints.team1 > 30){
+            roomTable.currentPoints.activeGamesByTeam1++;
+        }
+
+        if(!callerIsTeamOne && gamePoints.team2 > 30){
+            roomTable.currentPoints.activeGamesByTeam2++;
+        }
+
+        if(roomTable.currentPoints.activeGamesByTeam1 >= 2){
+            roomTable.currentPoints.activeGamesByTeam1 = 0;
+            roomTable.currentPoints.activeGamesByTeam2 = 0;
+            roomTable.currentPoints.team1 += 250;
+        }
+
+        if(roomTable.currentPoints.activeGamesByTeam2 >= 2){
+            roomTable.currentPoints.activeGamesByTeam1 = 0;
+            roomTable.currentPoints.activeGamesByTeam2 = 0;
+            roomTable.currentPoints.team2 += 250;
+        }
+
+        roomTable.currentPoints.setsTakenByTeam1 = 0;
+        roomTable.currentPoints.setsTakenByTeam2 = 0;
+        roomTable.cards = getBlankHands();
+        roomTable.initialHands = getBlankHands();
+        roomTable.cardShown = false;
+        roomTable.currentRound = 0;
+        roomTable.completedGame++;
+        roomTable.currentSetColor = '';
+        roomTable.setColorBroken = false;
+        roomTable.biddingActivePlayer = getOpeningBidder(roomTable.completedGame);
+        roomTable.biddingHighestBid = null;
+        roomTable.biddingPasses = 0;
+        roomTable.biddingDisplay = {
+            one: '',
+            two: '',
+            three: '',
+            four: ''
+        };
+        roomTable.whoSetColor = '';
+        roomTable.whoShowCards = '';
+        roomTable.currentCall = 0;
+        roomTable.whoPlayNext = '';
+        roomTable.cardHistory = [];
+        roomTable.trickStartingHands = getBlankHands();
+
+        return summary;
+    }
+
+    function buildGameScoringMessage(roomTable, honorsPoints, gamePoints){
+        const honorsParts = [];
+        const gameParts = [];
+
+        if(honorsPoints.team1){
+            honorsParts.push(`Team 1 honors +${honorsPoints.team1}`);
+        }
+        if(honorsPoints.team2){
+            honorsParts.push(`Team 2 honors +${honorsPoints.team2}`);
+        }
+        if(!honorsParts.length){
+            honorsParts.push('No honors points');
+        }
+
+        if(gamePoints.team1){
+            gameParts.push(`Team 1 game ${formatSignedPoints(gamePoints.team1)}`);
+        }
+        if(gamePoints.team2){
+            gameParts.push(`Team 2 game ${formatSignedPoints(gamePoints.team2)}`);
+        }
+        if(!gameParts.length){
+            gameParts.push('No game points');
+        }
+
+        return `${honorsParts.join(', ')}. ${gameParts.join(', ')}.`;
+    }
+
+    function formatSignedPoints(points){
+        return points > 0 ? `+${points}` : `${points}`;
     }
 
     function isHigherBid(proposedBid, currentBid){
@@ -591,5 +762,5 @@ module.exports = (io, getTables, updateTables)=>{
         return faceCards.length > 0;
     };
 
-    return { shuffleCard, playCardHandler, unplayCardHandler, onCallDecided, onRoundComplete, onGameCompleted };
+    return { shuffleCard, playCardHandler, onCallDecided, onRoundComplete, onGameCompleted };
 }
