@@ -76,6 +76,9 @@ module.exports = (io, getTables, updateTables, getUserTracker, emitActiveRooms)=
         completedGame: 0, // how many games are completed
         currentSetColor: '',
         setColorBroken: false,
+        biddingActivePlayer: 'one',
+        biddingHighestBid: null,
+        biddingPasses: 0,
         whoSetColor: '', //('one', 'two', 'three', 'four'),
         whoShowCards: '', //('one', 'two', 'three', 'four'),
         currentCall: 0, // 1,2,3,4,5,6,7

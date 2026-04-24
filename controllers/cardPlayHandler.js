@@ -15,6 +15,14 @@ module.exports = (io, getTables, updateTables)=>{
         four: 'two'
     };
 
+    const bidColorRank = {
+        clubs: 0,
+        diamonds: 1,
+        hearts: 2,
+        spades: 3,
+        nt: 4
+    };
+
     const shuffleCard = async function(){
         const socket = this;
         let cards = getShuffledCardsDeck();
@@ -44,36 +52,64 @@ module.exports = (io, getTables, updateTables)=>{
             four: []
         };
         roomTable.setColorBroken = false;
+        roomTable.biddingActivePlayer = 'one';
+        roomTable.biddingHighestBid = null;
+        roomTable.biddingPasses = 0;
         updateTables(tables);
+
+        emitBiddingState(roomId, roomTable);
     };
 
     
 
-    // take actions after a call is decided- puts info in table and broadcast next player
+    // handle sequential bidding until the highest bid is finalized
     const onCallDecided = async function(decidedCall){
         const socket = this;
-        roomId = socket.data.roomId;
+        const roomId = socket.data.roomId;
         let tables = getTables();
         let roomTable = tables.find(table=>table.roomId===roomId);
-        roomTable.whoSetColor = decidedCall.personCalled;
-        roomTable.currentCall = decidedCall.call;
-        roomTable.currentSetColor = decidedCall.color;
-        roomTable.setColorBroken = false;
-        roomTable.whoShowCards = inactivePlayer[decidedCall.personCalled];
-        roomTable.whoPlayNext = NextPlayer[ decidedCall.personCalled];
-        roomTable.currentRound++;
+        if(!roomTable){
+            return;
+        }
 
+        const bidder = socket.data.serial;
+        if(roomTable.biddingActivePlayer !== bidder){
+            emitInvalidBid(socket, "It is not your turn to bid.");
+            return;
+        }
+
+        if(decidedCall.pass){
+            if(!roomTable.biddingHighestBid){
+                emitInvalidBid(socket, "The opening bidder must make a bid.");
+                return;
+            }
+
+            roomTable.biddingPasses++;
+
+            if(roomTable.biddingPasses >= 3){
+                finalizeBid(roomId, roomTable);
+                updateTables(tables);
+                return;
+            }
+        }else {
+            const proposedBid = {
+                call: decidedCall.call,
+                color: decidedCall.color,
+                personCalled: bidder
+            };
+
+            if(!isHigherBid(proposedBid, roomTable.biddingHighestBid)){
+                emitInvalidBid(socket, "Your bid must be higher than the current highest bid.");
+                return;
+            }
+
+            roomTable.biddingHighestBid = proposedBid;
+            roomTable.biddingPasses = 0;
+        }
+
+        roomTable.biddingActivePlayer = NextPlayer[bidder];
         updateTables(tables);
-
-        // emits who will play and which cards will play
-        io.to(roomId).emit("next_player", {
-            nextPlayer: NextPlayer[decidedCall.personCalled], 
-            nextCards: NextPlayer[decidedCall.personCalled],
-            points: roomTable.currentPoints
-        });
-
-        // emits standing call
-        io.to(roomId).emit("standing_call", roomTable.currentCall + ' '+roomTable.currentSetColor);
+        emitBiddingState(roomId, roomTable);
     };
 
     // notifies everyone when a player plays a card
@@ -263,6 +299,9 @@ module.exports = (io, getTables, updateTables)=>{
         roomTable.completedGame++;
         roomTable.currentSetColor = '';
         roomTable.setColorBroken = false;
+        roomTable.biddingActivePlayer = 'one';
+        roomTable.biddingHighestBid = null;
+        roomTable.biddingPasses = 0;
         roomTable.whoSetColor = '';
         roomTable.whoShowCards ='';
         roomTable.currentCall = 0;
@@ -312,6 +351,79 @@ module.exports = (io, getTables, updateTables)=>{
 
     function emitInvalidPlay(socket, reason){
         socket.emit("invalid_card_play", { reason });
+    }
+
+    function emitInvalidBid(socket, reason){
+        socket.emit("invalid_bid", { reason });
+    }
+
+    function isHigherBid(proposedBid, currentBid){
+        if(
+            !Number.isInteger(proposedBid.call) ||
+            proposedBid.call < 1 ||
+            proposedBid.call > 7 ||
+            bidColorRank[proposedBid.color] === undefined
+        ){
+            return false;
+        }
+
+        if(!currentBid){
+            return true;
+        }
+
+        return proposedBid.call > currentBid.call ||
+            (proposedBid.call === currentBid.call && bidColorRank[proposedBid.color] > bidColorRank[currentBid.color]);
+    }
+
+    function formatBid(bid){
+        if(!bid){
+            return 'No bid yet';
+        }
+
+        const bidLabels = {
+            clubs: 'C',
+            diamonds: 'D',
+            hearts: 'H',
+            spades: 'S',
+            nt: 'NT'
+        };
+
+        return `${bid.call}${bidLabels[bid.color]}`;
+    }
+
+    function emitBiddingState(roomId, roomTable){
+        io.to(roomId).emit("bidding_state", {
+            nextBidder: roomTable.biddingActivePlayer,
+            highestBid: roomTable.biddingHighestBid,
+            consecutivePasses: roomTable.biddingPasses,
+            canPass: Boolean(roomTable.biddingHighestBid)
+        });
+        io.to(roomId).emit("standing_call", formatBid(roomTable.biddingHighestBid));
+    }
+
+    function finalizeBid(roomId, roomTable){
+        const winningBid = roomTable.biddingHighestBid;
+        if(!winningBid){
+            return;
+        }
+
+        roomTable.whoSetColor = winningBid.personCalled;
+        roomTable.currentCall = winningBid.call;
+        roomTable.currentSetColor = winningBid.color;
+        roomTable.setColorBroken = false;
+        roomTable.whoShowCards = inactivePlayer[winningBid.personCalled];
+        roomTable.whoPlayNext = NextPlayer[winningBid.personCalled];
+        roomTable.currentRound++;
+        roomTable.biddingActivePlayer = '';
+        roomTable.biddingPasses = 0;
+
+        io.to(roomId).emit("bidding_state", null);
+        io.to(roomId).emit("standing_call", formatBid(winningBid));
+        io.to(roomId).emit("next_player", {
+            nextPlayer: NextPlayer[winningBid.personCalled],
+            nextCards: NextPlayer[winningBid.personCalled],
+            points: roomTable.currentPoints
+        });
     }
 
     function canControlHand(roomTable, playedBy, serial){
