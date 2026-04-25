@@ -100,6 +100,7 @@ module.exports = (io, getTables, updateTables)=>{
 
             roomTable.biddingHighestBid = proposedBid;
             roomTable.biddingDisplay[bidder] = formatBid(proposedBid);
+            roomTable.biddingHistory.push(proposedBid);
             roomTable.biddingPasses = 0;
         }
 
@@ -278,6 +279,7 @@ module.exports = (io, getTables, updateTables)=>{
             three: '',
             four: ''
         };
+        roomTable.biddingHistory = [];
         roomTable.whoSetColor = '';
         roomTable.whoShowCards ='';
         roomTable.currentCall = 0;
@@ -366,6 +368,7 @@ module.exports = (io, getTables, updateTables)=>{
             three: '',
             four: ''
         };
+        roomTable.biddingHistory = [];
     }
 
     function distributeCardsToRoom(roomId, roomTable){
@@ -538,6 +541,7 @@ module.exports = (io, getTables, updateTables)=>{
             three: '',
             four: ''
         };
+        roomTable.biddingHistory = [];
         roomTable.whoSetColor = '';
         roomTable.whoShowCards = '';
         roomTable.currentCall = 0;
@@ -630,12 +634,14 @@ module.exports = (io, getTables, updateTables)=>{
             return;
         }
 
-        roomTable.whoSetColor = winningBid.personCalled;
+        const declarer = getDeclarer(roomTable, winningBid);
+
+        roomTable.whoSetColor = declarer;
         roomTable.currentCall = winningBid.call;
         roomTable.currentSetColor = winningBid.color;
         roomTable.setColorBroken = false;
-        roomTable.whoShowCards = inactivePlayer[winningBid.personCalled];
-        roomTable.whoPlayNext = NextPlayer[winningBid.personCalled];
+        roomTable.whoShowCards = inactivePlayer[declarer];
+        roomTable.whoPlayNext = NextPlayer[declarer];
         roomTable.currentRound++;
         roomTable.biddingActivePlayer = '';
         roomTable.biddingPasses = 0;
@@ -645,14 +651,25 @@ module.exports = (io, getTables, updateTables)=>{
             three: '',
             four: ''
         };
+        roomTable.biddingHistory = [];
 
         io.to(roomId).emit("bidding_state", null);
         io.to(roomId).emit("standing_call", formatBid(winningBid));
         io.to(roomId).emit("next_player", {
-            nextPlayer: NextPlayer[winningBid.personCalled],
-            nextCards: NextPlayer[winningBid.personCalled],
+            nextPlayer: NextPlayer[declarer],
+            nextCards: NextPlayer[declarer],
             points: roomTable.currentPoints
         });
+    }
+
+    function getDeclarer(roomTable, winningBid){
+        const winningTeamIsOne = isTeamOne(winningBid.personCalled);
+        const firstMatchingBid = (roomTable.biddingHistory || []).find((bid)=>
+            bid.color === winningBid.color &&
+            isTeamOne(bid.personCalled) === winningTeamIsOne
+        );
+
+        return firstMatchingBid?.personCalled || winningBid.personCalled;
     }
 
     function canControlHand(roomTable, playedBy, serial){
