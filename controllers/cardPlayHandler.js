@@ -686,6 +686,11 @@ module.exports = (io, getTables, updateTables)=>{
             return false;
         }
 
+        if(roomTable.cardsOnTable.length >= 4){
+            emitInvalidPlay(socket, "Please wait for the current trick to complete.");
+            return false;
+        }
+
         if(roomTable.whoPlayNext && roomTable.whoPlayNext !== playedCard.playedBy){
             emitInvalidPlay(socket, "It is not your turn.");
             return false;
