@@ -203,8 +203,6 @@ module.exports = (io, getTables, updateTables)=>{
         roomTable.cardsOnTable = [];
         roomTable.whoPlayNext = nextPlayer;
 
-        io.to(roomId).emit("update_points",roomTable.currentPoints);
-
         if(roomTable.currentRound===13){
             const scoringSummary = settleCompletedGame(roomTable);
             updateTables(tables);
@@ -213,6 +211,8 @@ module.exports = (io, getTables, updateTables)=>{
             io.to(roomId).emit("update_points", roomTable.currentPoints);
             return;
         }
+
+        io.to(roomId).emit("update_points",roomTable.currentPoints);
 
         roomTable.currentRound++;
         updateTables(tables);
