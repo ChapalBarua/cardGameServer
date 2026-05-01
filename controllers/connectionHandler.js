@@ -64,12 +64,6 @@ module.exports = (io, getTables, updateTables, getUserTracker, emitActiveRooms)=
           three: [],
           four: []
         },
-        initialHands: {
-          one: [],
-          two: [],
-          three: [],
-          four: []
-        },
         players: {
           one: 'player one',
           two: 'player two',
@@ -104,6 +98,10 @@ module.exports = (io, getTables, updateTables, getUserTracker, emitActiveRooms)=
           setsTakenByTeam2: 0,
           activeGamesByTeam1: 0,
           activeGamesByTeam2: 0
+        },
+        honorsPointsForHand: {
+          team1: 0,
+          team2: 0
         },
         cardHistory: []
       };

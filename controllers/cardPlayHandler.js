@@ -253,7 +253,6 @@ module.exports = (io, getTables, updateTables)=>{
         }
 
         roomTable.cards = getBlankHands();
-        roomTable.initialHands = getBlankHands();
 
         roomTable.cardShown = false;
         roomTable.currentRound = 0;
@@ -275,6 +274,7 @@ module.exports = (io, getTables, updateTables)=>{
         roomTable.currentCall = 0;
         roomTable.whoPlayNext = '';
         roomTable.cardHistory = [];
+        roomTable.honorsPointsForHand = { team1: 0, team2: 0 };
         updateTables(tables);
         io.to(roomId).emit("can_shuffle", true);
         io.to(roomId).emit("update_points",roomTable.currentPoints);
@@ -342,6 +342,7 @@ module.exports = (io, getTables, updateTables)=>{
             four: ''
         };
         roomTable.biddingHistory = [];
+        roomTable.honorsPointsForHand = { team1: 0, team2: 0 };
     }
 
     function distributeCardsToRoom(roomId, roomTable){
@@ -358,7 +359,6 @@ module.exports = (io, getTables, updateTables)=>{
             assignedCardsToClients = distributedCards[index];
             clientSocket.emit('distribute_cards', assignedCardsToClients);
             roomTable.cards[socketSerial] = assignedCardsToClients;
-            roomTable.initialHands[socketSerial] = [...assignedCardsToClients];
             index++;
         }
     }
@@ -385,45 +385,59 @@ module.exports = (io, getTables, updateTables)=>{
         return cards.filter(matcher).length;
     }
 
+    function buildCounts(cardsByPlayer, matcher){
+        return {
+            one: countMatchingCards(cardsByPlayer.one, matcher),
+            two: countMatchingCards(cardsByPlayer.two, matcher),
+            three: countMatchingCards(cardsByPlayer.three, matcher),
+            four: countMatchingCards(cardsByPlayer.four, matcher)
+        };
+    }
+
     function getHighestCountSerial(counts){
         return Object.keys(counts).reduce((bestSerial, currentSerial)=>
             counts[currentSerial] > counts[bestSerial] ? currentSerial : bestSerial
         );
     }
 
-    function getHonorsPoints(roomTable){
-        if(roomTable.currentSetColor === 'nt'){
-            const aceCounts = {
-                one: countMatchingCards(roomTable.initialHands.one, card=>card.cardValue === 'ace'),
-                two: countMatchingCards(roomTable.initialHands.two, card=>card.cardValue === 'ace'),
-                three: countMatchingCards(roomTable.initialHands.three, card=>card.cardValue === 'ace'),
-                four: countMatchingCards(roomTable.initialHands.four, card=>card.cardValue === 'ace')
-            };
+    function getPartnerSerial(serial){
+        return {
+            one: 'three',
+            two: 'four',
+            three: 'one',
+            four: 'two'
+        }[serial];
+    }
+
+    function getTeamTotals(counts){
+        return {
+            team1: counts.one + counts.three,
+            team2: counts.two + counts.four
+        };
+    }
+
+    function getHonorsPoints(cardsByPlayer, setColor){
+        if(setColor === 'nt'){
+            const aceCounts = buildCounts(cardsByPlayer, card=>card.cardValue === 'ace');
 
             const maxAceHolder = Math.max(...Object.values(aceCounts));
             if(maxAceHolder === 4){
-                return isTeamOne(getHighestCountSerial(aceCounts)) ? { team1: 80, team2: 0 } : { team1: 0, team2: 80 };
+                return isTeamOne(getHighestCountSerial(aceCounts)) ? { team1: 100, team2: 0 } : { team1: 0, team2: 100};
             }
 
-            const team1Aces = aceCounts.one + aceCounts.three;
-            const team2Aces = aceCounts.two + aceCounts.four;
+            const teamTotals = getTeamTotals(aceCounts);
 
-            if(team1Aces === team2Aces){
+            if(teamTotals.team1 === teamTotals.team2){
                 return { team1: 0, team2: 0 };
             }
 
-            return team1Aces > team2Aces
-                ? { team1: team1Aces * 10, team2: 0 }
-                : { team1: 0, team2: team2Aces * 10 };
+            return teamTotals.team1 > teamTotals.team2
+                ? { team1: teamTotals.team1 * 10, team2: 0 }
+                : { team1: 0, team2: teamTotals.team2 * 10 };
         }
 
         const honorValues = new Set(['ace', 'king', 'queen', 'jack', '10']);
-        const honorCounts = {
-            one: countMatchingCards(roomTable.initialHands.one, card=>card.cardType === roomTable.currentSetColor && honorValues.has(card.cardValue)),
-            two: countMatchingCards(roomTable.initialHands.two, card=>card.cardType === roomTable.currentSetColor && honorValues.has(card.cardValue)),
-            three: countMatchingCards(roomTable.initialHands.three, card=>card.cardType === roomTable.currentSetColor && honorValues.has(card.cardValue)),
-            four: countMatchingCards(roomTable.initialHands.four, card=>card.cardType === roomTable.currentSetColor && honorValues.has(card.cardValue))
-        };
+        const honorCounts = buildCounts(cardsByPlayer, card=>card.cardType === setColor && honorValues.has(card.cardValue));
 
         const maxHonorHolder = Math.max(...Object.values(honorCounts));
         if(maxHonorHolder === 5){
@@ -431,19 +445,24 @@ module.exports = (io, getTables, updateTables)=>{
         }
 
         if(maxHonorHolder === 4){
-            return isTeamOne(getHighestCountSerial(honorCounts)) ? { team1: 80, team2: 0 } : { team1: 0, team2: 80 };
+            const fourHonorHolder = getHighestCountSerial(honorCounts);
+            const fourHonorTeamIsOne = isTeamOne(fourHonorHolder);
+            const partnerSerial = getPartnerSerial(fourHonorHolder);
+            const partnerHonors = honorCounts[partnerSerial];
+            const points = 80 + (partnerHonors * 10);
+
+            return fourHonorTeamIsOne ? { team1: points, team2: 0 } : { team1: 0, team2: points };
         }
 
-        const team1Honors = honorCounts.one + honorCounts.three;
-        const team2Honors = honorCounts.two + honorCounts.four;
+        const teamTotals = getTeamTotals(honorCounts);
 
-        if(team1Honors === team2Honors){
+        if(teamTotals.team1 === teamTotals.team2){
             return { team1: 0, team2: 0 };
         }
 
-        return team1Honors > team2Honors
-            ? { team1: team1Honors * 10, team2: 0 }
-            : { team1: 0, team2: team2Honors * 10 };
+        return teamTotals.team1 > teamTotals.team2
+            ? { team1: teamTotals.team1 * 10, team2: 0 }
+            : { team1: 0, team2: teamTotals.team2 * 10 };
     }
 
     function getGamePoints(roomTable){
@@ -464,7 +483,7 @@ module.exports = (io, getTables, updateTables)=>{
     }
 
     function settleCompletedGame(roomTable){
-        const honorsPoints = getHonorsPoints(roomTable);
+        const honorsPoints = roomTable.honorsPointsForHand || { team1: 0, team2: 0 };
         const gamePoints = getGamePoints(roomTable);
         const callerIsTeamOne = isTeamOne(roomTable.whoSetColor);
         const summary = {
@@ -499,7 +518,6 @@ module.exports = (io, getTables, updateTables)=>{
         roomTable.currentPoints.setsTakenByTeam1 = 0;
         roomTable.currentPoints.setsTakenByTeam2 = 0;
         roomTable.cards = getBlankHands();
-        roomTable.initialHands = getBlankHands();
         roomTable.cardShown = false;
         roomTable.currentRound = 0;
         roomTable.completedGame++;
@@ -520,34 +538,24 @@ module.exports = (io, getTables, updateTables)=>{
         roomTable.currentCall = 0;
         roomTable.whoPlayNext = '';
         roomTable.cardHistory = [];
+        roomTable.honorsPointsForHand = { team1: 0, team2: 0 };
         return summary;
     }
 
     function buildGameScoringMessage(roomTable, honorsPoints, gamePoints){
-        const honorsParts = [];
-        const gameParts = [];
+        const honorsMessage = honorsPoints.team1
+            ? `Team 1 honors +${honorsPoints.team1}`
+            : honorsPoints.team2
+                ? `Team 2 honors +${honorsPoints.team2}`
+                : 'No honors points';
 
-        if(honorsPoints.team1){
-            honorsParts.push(`Team 1 honors +${honorsPoints.team1}`);
-        }
-        if(honorsPoints.team2){
-            honorsParts.push(`Team 2 honors +${honorsPoints.team2}`);
-        }
-        if(!honorsParts.length){
-            honorsParts.push('No honors points');
-        }
+        const gameMessage = gamePoints.team1
+            ? `Team 1 game points ${formatSignedPoints(gamePoints.team1)}`
+            : gamePoints.team2
+                ? `Team 2 game points ${formatSignedPoints(gamePoints.team2)}`
+                : 'No game points';
 
-        if(gamePoints.team1){
-            gameParts.push(`Team 1 game ${formatSignedPoints(gamePoints.team1)}`);
-        }
-        if(gamePoints.team2){
-            gameParts.push(`Team 2 game ${formatSignedPoints(gamePoints.team2)}`);
-        }
-        if(!gameParts.length){
-            gameParts.push('No game points');
-        }
-
-        return `${honorsParts.join(', ')}. ${gameParts.join(', ')}.`;
+        return `${honorsMessage}. ${gameMessage}.`;
     }
 
     function formatSignedPoints(points){
@@ -610,6 +618,7 @@ module.exports = (io, getTables, updateTables)=>{
         roomTable.whoSetColor = declarer;
         roomTable.currentCall = winningBid.call;
         roomTable.currentSetColor = winningBid.color;
+        roomTable.honorsPointsForHand = getHonorsPoints(roomTable.cards, winningBid.color);
         roomTable.setColorBroken = false;
         roomTable.whoShowCards = inactivePlayer[declarer];
         roomTable.whoPlayNext = NextPlayer[declarer];
