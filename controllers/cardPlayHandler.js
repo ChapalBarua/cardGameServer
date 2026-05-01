@@ -120,10 +120,6 @@ module.exports = (io, getTables, updateTables)=>{
             return;
         }
 
-        if(roomTable.cardsOnTable.length === 0){
-            roomTable.trickStartingHands = cloneHands(roomTable.cards);
-        }
-
         roomTable.cardsOnTable.push(playedCard);
 
         roomTable.cards[playedCard.serial] = roomTable.cards[playedCard.serial].filter(
@@ -205,12 +201,6 @@ module.exports = (io, getTables, updateTables)=>{
         }
         roomTable.cardHistory.push(roomTable.cardsOnTable);
         roomTable.cardsOnTable = [];
-        roomTable.trickStartingHands = {
-            one: [],
-            two: [],
-            three: [],
-            four: []
-        };
         roomTable.whoPlayNext = nextPlayer;
 
         io.to(roomId).emit("update_points",roomTable.currentPoints);
@@ -285,8 +275,6 @@ module.exports = (io, getTables, updateTables)=>{
         roomTable.currentCall = 0;
         roomTable.whoPlayNext = '';
         roomTable.cardHistory = [];
-        roomTable.trickStartingHands = getBlankHands();
-
         updateTables(tables);
         io.to(roomId).emit("can_shuffle", true);
         io.to(roomId).emit("update_points",roomTable.currentPoints);
@@ -298,15 +286,6 @@ module.exports = (io, getTables, updateTables)=>{
      */
     function getValue(playedCardvalue){
         return cardValues.findIndex(value=>value===playedCardvalue);
-    }
-
-    function cloneHands(cards){
-        return {
-            one: [...cards.one],
-            two: [...cards.two],
-            three: [...cards.three],
-            four: [...cards.four]
-        };
     }
 
     function getBlankHands(){
@@ -344,12 +323,6 @@ module.exports = (io, getTables, updateTables)=>{
     }
 
     function resetBiddingState(roomTable){
-        roomTable.trickStartingHands = {
-            one: [],
-            two: [],
-            three: [],
-            four: []
-        };
         roomTable.cardShown = false;
         roomTable.currentRound = 0;
         roomTable.currentSetColor = '';
@@ -547,8 +520,6 @@ module.exports = (io, getTables, updateTables)=>{
         roomTable.currentCall = 0;
         roomTable.whoPlayNext = '';
         roomTable.cardHistory = [];
-        roomTable.trickStartingHands = getBlankHands();
-
         return summary;
     }
 
@@ -722,9 +693,7 @@ module.exports = (io, getTables, updateTables)=>{
         }
 
         const leadCardType = roomTable.cardsOnTable[0].card.cardType;
-        const playerStartingHand = roomTable.trickStartingHands[playedCard.serial] || playerCards;
-
-        if(hasSuit(playerStartingHand, leadCardType) && playedCard.card.cardType !== leadCardType){
+        if(hasSuit(playerCards, leadCardType) && playedCard.card.cardType !== leadCardType){
             emitInvalidPlay(socket, "You must follow the lead suit if you had it at the start of the trick.");
             return false;
         }
