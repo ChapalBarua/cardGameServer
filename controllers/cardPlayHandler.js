@@ -486,7 +486,7 @@ module.exports = (io, getTables, updateTables)=>{
         const honorsPoints = roomTable.honorsPointsForHand || { team1: 0, team2: 0 };
         const gamePoints = getGamePoints(roomTable);
         const callerIsTeamOne = isTeamOne(roomTable.whoSetColor);
-        const summary = {
+        const scoringSummary = {
             honorsPoints,
             gamePoints,
             message: buildGameScoringMessage(roomTable, honorsPoints, gamePoints)
@@ -494,6 +494,21 @@ module.exports = (io, getTables, updateTables)=>{
 
         roomTable.currentPoints.team1 += honorsPoints.team1 + gamePoints.team1;
         roomTable.currentPoints.team2 += honorsPoints.team2 + gamePoints.team2;
+
+        const callerTricks = getCallerTricks(roomTable);
+        const expectedTricks = 6 + roomTable.currentCall;
+        if(callerTricks >= expectedTricks && callerTricks >= 12){
+            const bonusPoints = (callerTricks - 11) * 50;
+            if(callerIsTeamOne){
+                roomTable.currentPoints.team1 += bonusPoints;
+            }else {
+                roomTable.currentPoints.team2 += bonusPoints;
+            }
+            io.to(roomTable.roomId).emit(
+                "bonus_notification",
+                bonusPoints === 50 ? 'LS bonus! +50 points.' : 'GS bonus! +100 points.'
+            );
+        }
 
         if(callerIsTeamOne && gamePoints.team1 > 30){
             roomTable.currentPoints.activeGamesByTeam1++;
@@ -503,18 +518,19 @@ module.exports = (io, getTables, updateTables)=>{
             roomTable.currentPoints.activeGamesByTeam2++;
         }
 
-        if(roomTable.currentPoints.activeGamesByTeam1 >= 2){
+        if(roomTable.currentPoints.activeGamesByTeam1 >= 2 || roomTable.currentPoints.activeGamesByTeam2 >= 2){
+            const team1WonRub = roomTable.currentPoints.activeGamesByTeam1 >= 2;
             roomTable.currentPoints.activeGamesByTeam1 = 0;
             roomTable.currentPoints.activeGamesByTeam2 = 0;
-            roomTable.currentPoints.team1 += 250;
-        }
 
-        if(roomTable.currentPoints.activeGamesByTeam2 >= 2){
-            roomTable.currentPoints.activeGamesByTeam1 = 0;
-            roomTable.currentPoints.activeGamesByTeam2 = 0;
-            roomTable.currentPoints.team2 += 250;
-        }
+            if(team1WonRub){
+                roomTable.currentPoints.team1 += 250;
+            }else {
+                roomTable.currentPoints.team2 += 250;
+            }
 
+            io.to(roomTable.roomId).emit("bonus_notification", 'Congrats on your RUB! +250 points.');
+        }
         roomTable.currentPoints.setsTakenByTeam1 = 0;
         roomTable.currentPoints.setsTakenByTeam2 = 0;
         roomTable.cards = getBlankHands();
@@ -539,7 +555,7 @@ module.exports = (io, getTables, updateTables)=>{
         roomTable.whoPlayNext = '';
         roomTable.cardHistory = [];
         roomTable.honorsPointsForHand = { team1: 0, team2: 0 };
-        return summary;
+        return scoringSummary;
     }
 
     function buildGameScoringMessage(roomTable, honorsPoints, gamePoints){

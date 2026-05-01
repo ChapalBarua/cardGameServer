@@ -194,4 +194,91 @@ test('finalized 4C hand scores +90 honors and +24 game for an exact make', async
   assert.ok(scoredEvent);
   assert.deepEqual(scoredEvent.payload.honorsPoints, { team1: 90, team2: 0 });
   assert.deepEqual(scoredEvent.payload.gamePoints, { team1: 24, team2: 0 });
+  assert.equal(io.emissions.find(event => event.event === 'bonus_notification'), undefined);
+});
+
+test('caller gets a 50 point bonus for finishing with 12 tricks', async () => {
+  const roomTable = createRoomTable({
+    cards: {
+      one: [],
+      two: [
+        { cardType: 'spades', cardValue: 'ace' },
+        { cardType: 'spades', cardValue: 'king' },
+        { cardType: 'spades', cardValue: 'queen' }
+      ],
+      three: [],
+      four: []
+    },
+    biddingActivePlayer: 'one',
+    biddingHighestBid: { call: 3, color: 'spades', personCalled: 'two' },
+    biddingPasses: 2,
+    biddingHistory: [{ call: 3, color: 'spades', personCalled: 'two' }]
+  });
+
+  const { io, handlers } = createHarness(roomTable);
+
+  await handlers.onCallDecided.call(
+    { data: { roomId: roomTable.roomId, serial: 'one' }, emit() {} },
+    { pass: true }
+  );
+
+  roomTable.currentRound = 13;
+  roomTable.currentPoints.setsTakenByTeam2 = 11;
+  roomTable.cardsOnTable = [
+    { serial: 'two', playedBy: 'two', card: { cardType: 'clubs', cardValue: 'ace' } },
+    { serial: 'three', playedBy: 'three', card: { cardType: 'clubs', cardValue: 'king' } },
+    { serial: 'four', playedBy: 'four', card: { cardType: 'clubs', cardValue: 'queen' } },
+    { serial: 'one', playedBy: 'one', card: { cardType: 'clubs', cardValue: 'jack' } }
+  ];
+
+  await handlers.onRoundComplete.call({ data: { roomId: roomTable.roomId } });
+
+  assert.equal(roomTable.currentPoints.team2, 134);
+
+  const scoredEvent = io.emissions.find(event => event.event === 'game_scored');
+  assert.ok(scoredEvent);
+  assert.deepEqual(scoredEvent.payload.honorsPoints, { team1: 0, team2: 30 });
+  assert.deepEqual(scoredEvent.payload.gamePoints, { team1: 0, team2: 54 });
+  const bonusEvent = io.emissions.find(event => event.event === 'bonus_notification');
+  assert.ok(bonusEvent);
+  assert.equal(bonusEvent.payload, 'LS bonus! +50 points.');
+});
+
+test('caller gets a 100 point bonus for finishing with 13 tricks after making the contract', async () => {
+  const roomTable = createRoomTable({
+    cards: {
+      one: [],
+      two: [],
+      three: [],
+      four: []
+    },
+    biddingActivePlayer: 'two',
+    biddingHighestBid: { call: 2, color: 'hearts', personCalled: 'three' },
+    biddingPasses: 2,
+    biddingHistory: [{ call: 2, color: 'hearts', personCalled: 'three' }]
+  });
+
+  const { io, handlers } = createHarness(roomTable);
+
+  await handlers.onCallDecided.call(
+    { data: { roomId: roomTable.roomId, serial: 'two' }, emit() {} },
+    { pass: true }
+  );
+
+  roomTable.currentRound = 13;
+  roomTable.currentPoints.setsTakenByTeam1 = 12;
+  roomTable.cardsOnTable = [
+    { serial: 'three', playedBy: 'three', card: { cardType: 'spades', cardValue: 'ace' } },
+    { serial: 'four', playedBy: 'four', card: { cardType: 'spades', cardValue: 'king' } },
+    { serial: 'one', playedBy: 'one', card: { cardType: 'spades', cardValue: 'queen' } },
+    { serial: 'two', playedBy: 'two', card: { cardType: 'spades', cardValue: 'jack' } }
+  ];
+
+  await handlers.onRoundComplete.call({ data: { roomId: roomTable.roomId } });
+
+  const scoredEvent = io.emissions.find(event => event.event === 'game_scored');
+  assert.ok(scoredEvent);
+  const bonusEvent = io.emissions.find(event => event.event === 'bonus_notification');
+  assert.ok(bonusEvent);
+  assert.equal(bonusEvent.payload, 'GS bonus! +100 points.');
 });
