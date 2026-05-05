@@ -602,10 +602,10 @@ module.exports = (io, getTables, updateTables)=>{
         }
 
         const bidLabels = {
-            clubs: 'C',
-            diamonds: 'D',
-            hearts: 'H',
-            spades: 'S',
+            clubs: '♣',
+            diamonds: '♦',
+            hearts: '♥',
+            spades: '♠',
             nt: 'NT'
         };
 
