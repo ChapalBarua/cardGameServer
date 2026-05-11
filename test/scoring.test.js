@@ -55,6 +55,7 @@ function createRoomTable(overrides = {}) {
       four: ''
     },
     biddingHistory: [],
+    contractDoubled: false,
     whoSetColor: '',
     whoShowCards: '',
     currentCall: 0,
@@ -281,4 +282,209 @@ test('caller gets a 100 point bonus for finishing with 13 tricks after making th
   const bonusEvent = io.emissions.find(event => event.event === 'bonus_notification');
   assert.ok(bonusEvent);
   assert.equal(bonusEvent.payload, 'GS bonus! +100 points.');
+});
+
+test('doubled contract penalizes 100 per undertrick', async () => {
+  const roomTable = createRoomTable({
+    currentRound: 13,
+    currentSetColor: 'spades',
+    currentCall: 3,
+    whoSetColor: 'two',
+    contractDoubled: true,
+    currentPoints: {
+      team1: 0,
+      team2: 0,
+      setsTakenByTeam1: 8,
+      setsTakenByTeam2: 4,
+      activeGamesByTeam1: 0,
+      activeGamesByTeam2: 0
+    },
+    cardsOnTable: [
+      { serial: 'two', playedBy: 'two', card: { cardType: 'hearts', cardValue: 'ace' } },
+      { serial: 'three', playedBy: 'three', card: { cardType: 'hearts', cardValue: 'king' } },
+      { serial: 'four', playedBy: 'four', card: { cardType: 'hearts', cardValue: 'queen' } },
+      { serial: 'one', playedBy: 'one', card: { cardType: 'hearts', cardValue: 'jack' } }
+    ]
+  });
+
+  const { io, handlers } = createHarness(roomTable);
+
+  await handlers.onRoundComplete.call({ data: { roomId: roomTable.roomId } });
+
+  const scoredEvent = io.emissions.find(event => event.event === 'game_scored');
+  assert.ok(scoredEvent);
+  assert.deepEqual(scoredEvent.payload.gamePoints, { team1: 0, team2: -400 });
+  assert.equal(roomTable.currentPoints.team2, -400);
+});
+
+test('made doubled contract doubles game points and awards false call bonus', async () => {
+  const roomTable = createRoomTable({
+    currentRound: 13,
+    currentSetColor: 'hearts',
+    currentCall: 2,
+    whoSetColor: 'one',
+    contractDoubled: true,
+    currentPoints: {
+      team1: 8,
+      team2: 0,
+      setsTakenByTeam1: 8,
+      setsTakenByTeam2: 4,
+      activeGamesByTeam1: 0,
+      activeGamesByTeam2: 0
+    },
+    cardsOnTable: [
+      { serial: 'one', playedBy: 'one', card: { cardType: 'clubs', cardValue: 'ace' } },
+      { serial: 'two', playedBy: 'two', card: { cardType: 'clubs', cardValue: 'king' } },
+      { serial: 'three', playedBy: 'three', card: { cardType: 'clubs', cardValue: 'queen' } },
+      { serial: 'four', playedBy: 'four', card: { cardType: 'clubs', cardValue: 'jack' } }
+    ]
+  });
+
+  const { io, handlers } = createHarness(roomTable);
+
+  await handlers.onRoundComplete.call({ data: { roomId: roomTable.roomId } });
+
+  const scoredEvent = io.emissions.find(event => event.event === 'game_scored');
+  assert.ok(scoredEvent);
+  assert.deepEqual(scoredEvent.payload.gamePoints, { team1: 48, team2: 0 });
+  assert.equal(roomTable.currentPoints.team1, 156);
+  assert.equal(roomTable.currentPoints.activeGamesByTeam1, 1);
+
+  const bonusEvents = io.emissions.filter(event => event.event === 'bonus_notification');
+  assert.equal(bonusEvents.length, 2);
+  assert.equal(bonusEvents[0].payload, 'False call bonus! +50 points.');
+  assert.equal(bonusEvents[1].payload, 'Doubled overtrick bonus! +50 points.');
+});
+
+test('made doubled contract with overtricks adds 50 per extra trick and includes it in scoring message', async () => {
+  const roomTable = createRoomTable({
+    currentRound: 13,
+    currentSetColor: 'hearts',
+    currentCall: 2,
+    whoSetColor: 'one',
+    contractDoubled: true,
+    currentPoints: {
+      team1: 0,
+      team2: 0,
+      setsTakenByTeam1: 9,
+      setsTakenByTeam2: 4,
+      activeGamesByTeam1: 0,
+      activeGamesByTeam2: 0
+    },
+    cardsOnTable: [
+      { serial: 'one', playedBy: 'one', card: { cardType: 'clubs', cardValue: 'ace' } },
+      { serial: 'two', playedBy: 'two', card: { cardType: 'clubs', cardValue: 'king' } },
+      { serial: 'three', playedBy: 'three', card: { cardType: 'clubs', cardValue: 'queen' } },
+      { serial: 'four', playedBy: 'four', card: { cardType: 'clubs', cardValue: 'jack' } }
+    ]
+  });
+
+  const { io, handlers } = createHarness(roomTable);
+
+  await handlers.onRoundComplete.call({ data: { roomId: roomTable.roomId } });
+
+  const scoredEvent = io.emissions.find(event => event.event === 'game_scored');
+  assert.ok(scoredEvent);
+  assert.deepEqual(scoredEvent.payload.gamePoints, { team1: 64, team2: 0 });
+  assert.equal(
+    scoredEvent.payload.message,
+    'No honors points. Team 1 doubled game points +64. False call bonus +50. Doubled overtrick bonus +100.'
+  );
+  assert.equal(roomTable.currentPoints.team1, 214);
+
+  const bonusEvents = io.emissions.filter(event => event.event === 'bonus_notification');
+  assert.equal(bonusEvents.length, 2);
+  assert.equal(bonusEvents[0].payload, 'False call bonus! +50 points.');
+  assert.equal(bonusEvents[1].payload, 'Doubled overtrick bonus! +100 points.');
+});
+
+test('after 13 completed hands, game_scored includes a winner announcement with team names and totals', async () => {
+  const roomTable = createRoomTable({
+    completedGame: 12,
+    currentRound: 13,
+    currentSetColor: 'clubs',
+    currentCall: 1,
+    whoSetColor: 'one',
+    currentPoints: {
+      team1: 120,
+      team2: 85,
+      setsTakenByTeam1: 6,
+      setsTakenByTeam2: 6,
+      activeGamesByTeam1: 0,
+      activeGamesByTeam2: 0
+    },
+    cardsOnTable: [
+      { serial: 'one', playedBy: 'one', card: { cardType: 'spades', cardValue: 'ace' } },
+      { serial: 'two', playedBy: 'two', card: { cardType: 'spades', cardValue: 'king' } },
+      { serial: 'three', playedBy: 'three', card: { cardType: 'spades', cardValue: 'queen' } },
+      { serial: 'four', playedBy: 'four', card: { cardType: 'spades', cardValue: 'jack' } }
+    ]
+  });
+
+  const { io, handlers } = createHarness(roomTable);
+
+  await handlers.onRoundComplete.call({ data: { roomId: roomTable.roomId } });
+
+  const scoredEvent = io.emissions.find(event => event.event === 'game_scored');
+  assert.ok(scoredEvent);
+  assert.equal(
+    scoredEvent.payload.gameCompleteAnnouncement,
+    'Game complete. Team 1 (Player One and Player Three) scored 126. Team 2 (Player Two and Player Four) scored 85. Congrats Player One and Player Three, you win!'
+  );
+});
+
+test('after a full 13-hand game, scores reset before the next shuffle window opens', async () => {
+  const originalSetTimeout = global.setTimeout;
+  global.setTimeout = (callback) => {
+    callback();
+    return 0;
+  };
+
+  try {
+    const roomTable = createRoomTable({
+      completedGame: 12,
+      currentRound: 13,
+      currentSetColor: 'clubs',
+      currentCall: 1,
+      whoSetColor: 'one',
+      currentPoints: {
+        team1: 120,
+        team2: 85,
+        setsTakenByTeam1: 6,
+        setsTakenByTeam2: 6,
+        activeGamesByTeam1: 1,
+        activeGamesByTeam2: 0
+      },
+      cardsOnTable: [
+        { serial: 'one', playedBy: 'one', card: { cardType: 'spades', cardValue: 'ace' } },
+        { serial: 'two', playedBy: 'two', card: { cardType: 'spades', cardValue: 'king' } },
+        { serial: 'three', playedBy: 'three', card: { cardType: 'spades', cardValue: 'queen' } },
+        { serial: 'four', playedBy: 'four', card: { cardType: 'spades', cardValue: 'jack' } }
+      ]
+    });
+
+    const { io, handlers } = createHarness(roomTable);
+
+    await handlers.onRoundComplete.call({ data: { roomId: roomTable.roomId } });
+
+    assert.deepEqual(roomTable.currentPoints, {
+      team1: 0,
+      team2: 0,
+      setsTakenByTeam1: 0,
+      setsTakenByTeam2: 0,
+      activeGamesByTeam1: 0,
+      activeGamesByTeam2: 0
+    });
+    assert.equal(roomTable.completedGame, 0);
+
+    const updatePointEvents = io.emissions.filter(event => event.event === 'update_points');
+    assert.equal(updatePointEvents.length, 2);
+    assert.deepEqual(updatePointEvents[1].payload, roomTable.currentPoints);
+
+    const canShuffleEvents = io.emissions.filter(event => event.event === 'can_shuffle');
+    assert.equal(canShuffleEvents.length, 1);
+    assert.equal(canShuffleEvents[0].payload, true);
+  } finally {
+    global.setTimeout = originalSetTimeout;
+  }
 });

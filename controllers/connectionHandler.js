@@ -86,6 +86,7 @@ module.exports = (io, getTables, updateTables, getUserTracker, emitActiveRooms)=
           four: ''
         },
         biddingHistory: [],
+        contractDoubled: false,
         whoSetColor: '', //('one', 'two', 'three', 'four'),
         whoShowCards: '', //('one', 'two', 'three', 'four'),
         currentCall: 0, // 1,2,3,4,5,6,7

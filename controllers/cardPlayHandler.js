@@ -86,6 +86,15 @@ module.exports = (io, getTables, updateTables)=>{
                 updateTables(tables);
                 return;
             }
+        }else if(decidedCall.double){
+            if(!isDoubleAllowed(roomTable, bidder)){
+                emitInvalidBid(socket, "You can only double an active opponent contract.");
+                return;
+            }
+
+            roomTable.biddingDisplay[bidder] = 'Double';
+            roomTable.biddingPasses = 0;
+            roomTable.contractDoubled = true;
         }else {
             const proposedBid = {
                 call: decidedCall.call,
@@ -102,6 +111,7 @@ module.exports = (io, getTables, updateTables)=>{
             roomTable.biddingDisplay[bidder] = formatBid(proposedBid);
             roomTable.biddingHistory.push(proposedBid);
             roomTable.biddingPasses = 0;
+            roomTable.contractDoubled = false;
         }
 
         roomTable.biddingActivePlayer = NextPlayer[bidder];
@@ -207,8 +217,19 @@ module.exports = (io, getTables, updateTables)=>{
             const scoringSummary = settleCompletedGame(roomTable);
             updateTables(tables);
             io.to(roomId).emit("game_scored", scoringSummary);
-            io.to(roomId).emit("can_shuffle", true);
             io.to(roomId).emit("update_points", roomTable.currentPoints);
+
+            if(scoringSummary.gameCompleteAnnouncement){
+                setTimeout(() => {
+                    resetCompletedCycleScores(roomTable);
+                    updateTables(tables);
+                    io.to(roomId).emit("update_points", roomTable.currentPoints);
+                    io.to(roomId).emit("can_shuffle", true);
+                }, 10000);
+                return;
+            }
+
+            io.to(roomId).emit("can_shuffle", true);
             return;
         }
 
@@ -342,6 +363,7 @@ module.exports = (io, getTables, updateTables)=>{
             four: ''
         };
         roomTable.biddingHistory = [];
+        roomTable.contractDoubled = false;
         roomTable.honorsPointsForHand = { team1: 0, team2: 0 };
     }
 
@@ -373,6 +395,14 @@ module.exports = (io, getTables, updateTables)=>{
 
     function isTeamOne(serial){
         return serial === 'one' || serial === 'three';
+    }
+
+    function isDoubleAllowed(roomTable, bidder){
+        if(!roomTable.biddingHighestBid || roomTable.contractDoubled){
+            return false;
+        }
+
+        return isTeamOne(bidder) !== isTeamOne(roomTable.biddingHighestBid.personCalled);
     }
 
     function getCallerTricks(roomTable){
@@ -470,13 +500,17 @@ module.exports = (io, getTables, updateTables)=>{
         const expectedTricks = 6 + roomTable.currentCall;
 
         if(callerTricks < expectedTricks){
-            const penalty = -50 * (expectedTricks - callerTricks);
+            const penalty = -(roomTable.contractDoubled ? 100 : 50) * (expectedTricks - callerTricks);
             return isTeamOne(roomTable.whoSetColor)
                 ? { team1: penalty, team2: 0 }
                 : { team1: 0, team2: penalty };
         }
 
-        const points = (callerTricks - 6) * gamePointValue[roomTable.currentSetColor];
+        let points = (callerTricks - 6) * gamePointValue[roomTable.currentSetColor];
+        if(roomTable.contractDoubled){
+            points *= 2;
+        }
+
         return isTeamOne(roomTable.whoSetColor)
             ? { team1: points, team2: 0 }
             : { team1: 0, team2: points };
@@ -486,17 +520,40 @@ module.exports = (io, getTables, updateTables)=>{
         const honorsPoints = roomTable.honorsPointsForHand || { team1: 0, team2: 0 };
         const gamePoints = getGamePoints(roomTable);
         const callerIsTeamOne = isTeamOne(roomTable.whoSetColor);
+        const callerTricks = getCallerTricks(roomTable);
+        const expectedTricks = 6 + roomTable.currentCall;
+        const falseCallBonus = roomTable.contractDoubled && callerTricks >= expectedTricks ? 50 : 0;
+        const doubledOvertrickBonus = roomTable.contractDoubled && callerTricks > expectedTricks
+            ? (callerTricks - expectedTricks) * 50
+            : 0;
         const scoringSummary = {
             honorsPoints,
             gamePoints,
-            message: buildGameScoringMessage(roomTable, honorsPoints, gamePoints)
+            message: buildGameScoringMessage(roomTable, honorsPoints, gamePoints, falseCallBonus, doubledOvertrickBonus),
+            gameCompleteAnnouncement: ''
         };
 
         roomTable.currentPoints.team1 += honorsPoints.team1 + gamePoints.team1;
         roomTable.currentPoints.team2 += honorsPoints.team2 + gamePoints.team2;
 
-        const callerTricks = getCallerTricks(roomTable);
-        const expectedTricks = 6 + roomTable.currentCall;
+        if(falseCallBonus){
+            if(callerIsTeamOne){
+                roomTable.currentPoints.team1 += falseCallBonus;
+            }else {
+                roomTable.currentPoints.team2 += falseCallBonus;
+            }
+            io.to(roomTable.roomId).emit("bonus_notification", 'False call bonus! +50 points.');
+        }
+
+        if(doubledOvertrickBonus){
+            if(callerIsTeamOne){
+                roomTable.currentPoints.team1 += doubledOvertrickBonus;
+            }else {
+                roomTable.currentPoints.team2 += doubledOvertrickBonus;
+            }
+            io.to(roomTable.roomId).emit("bonus_notification", `Doubled overtrick bonus! +${doubledOvertrickBonus} points.`);
+        }
+
         if(callerTricks >= expectedTricks && callerTricks >= 12){
             const bonusPoints = (callerTricks - 11) * 50;
             if(callerIsTeamOne){
@@ -537,6 +594,9 @@ module.exports = (io, getTables, updateTables)=>{
         roomTable.cardShown = false;
         roomTable.currentRound = 0;
         roomTable.completedGame++;
+        if(roomTable.completedGame % 13 === 0){
+            scoringSummary.gameCompleteAnnouncement = buildGameCompleteAnnouncement(roomTable);
+        }
         roomTable.currentSetColor = '';
         roomTable.setColorBroken = false;
         roomTable.biddingActivePlayer = getOpeningBidder(roomTable.completedGame);
@@ -549,6 +609,7 @@ module.exports = (io, getTables, updateTables)=>{
             four: ''
         };
         roomTable.biddingHistory = [];
+        roomTable.contractDoubled = false;
         roomTable.whoSetColor = '';
         roomTable.whoShowCards = '';
         roomTable.currentCall = 0;
@@ -558,20 +619,60 @@ module.exports = (io, getTables, updateTables)=>{
         return scoringSummary;
     }
 
-    function buildGameScoringMessage(roomTable, honorsPoints, gamePoints){
+    function buildGameCompleteAnnouncement(roomTable){
+        const team1Names = `${roomTable.players.one} and ${roomTable.players.three}`;
+        const team2Names = `${roomTable.players.two} and ${roomTable.players.four}`;
+        const team1Score = roomTable.currentPoints.team1;
+        const team2Score = roomTable.currentPoints.team2;
+
+        if(team1Score === team2Score){
+            return `Game complete. Team 1 (${team1Names}) scored ${team1Score}. Team 2 (${team2Names}) scored ${team2Score}. The game is tied.`;
+        }
+
+        if(team1Score > team2Score){
+            return `Game complete. Team 1 (${team1Names}) scored ${team1Score}. Team 2 (${team2Names}) scored ${team2Score}. Congrats ${team1Names}, you win!`;
+        }
+
+        return `Game complete. Team 1 (${team1Names}) scored ${team1Score}. Team 2 (${team2Names}) scored ${team2Score}. Congrats ${team2Names}, you win!`;
+    }
+
+    function resetCompletedCycleScores(roomTable){
+        roomTable.currentPoints = {
+            team1: 0,
+            team2: 0,
+            setsTakenByTeam1: 0,
+            setsTakenByTeam2: 0,
+            activeGamesByTeam1: 0,
+            activeGamesByTeam2: 0
+        };
+        roomTable.completedGame = 0;
+        roomTable.biddingActivePlayer = getOpeningBidder(roomTable.completedGame);
+    }
+
+    function buildGameScoringMessage(roomTable, honorsPoints, gamePoints, falseCallBonus, doubledOvertrickBonus){
         const honorsMessage = honorsPoints.team1
             ? `Team 1 honors +${honorsPoints.team1}`
             : honorsPoints.team2
                 ? `Team 2 honors +${honorsPoints.team2}`
                 : 'No honors points';
 
+        const gamePointsLabel = roomTable.contractDoubled ? 'doubled game points' : 'game points';
         const gameMessage = gamePoints.team1
-            ? `Team 1 game points ${formatSignedPoints(gamePoints.team1)}`
+            ? `Team 1 ${gamePointsLabel} ${formatSignedPoints(gamePoints.team1)}`
             : gamePoints.team2
-                ? `Team 2 game points ${formatSignedPoints(gamePoints.team2)}`
+                ? `Team 2 ${gamePointsLabel} ${formatSignedPoints(gamePoints.team2)}`
                 : 'No game points';
 
-        return `${honorsMessage}. ${gameMessage}.`;
+        const bonusParts = [];
+        if(falseCallBonus){
+            bonusParts.push(`False call bonus +${falseCallBonus}`);
+        }
+        if(doubledOvertrickBonus){
+            bonusParts.push(`Doubled overtrick bonus +${doubledOvertrickBonus}`);
+        }
+
+        const bonusMessage = bonusParts.length ? ` ${bonusParts.join('. ')}.` : '';
+        return `${honorsMessage}. ${gameMessage}.${bonusMessage}`;
     }
 
     function formatSignedPoints(points){
@@ -596,7 +697,7 @@ module.exports = (io, getTables, updateTables)=>{
             (proposedBid.call === currentBid.call && bidColorRank[proposedBid.color] > bidColorRank[currentBid.color]);
     }
 
-    function formatBid(bid){
+    function formatBid(bid, isDoubled = false){
         if(!bid){
             return 'No bid yet';
         }
@@ -609,7 +710,7 @@ module.exports = (io, getTables, updateTables)=>{
             nt: 'NT'
         };
 
-        return `${bid.call}${bidLabels[bid.color]}`;
+        return `${bid.call}${bidLabels[bid.color]}${isDoubled ? ' X' : ''}`;
     }
 
     function emitBiddingState(roomId, roomTable){
@@ -618,9 +719,11 @@ module.exports = (io, getTables, updateTables)=>{
             highestBid: roomTable.biddingHighestBid,
             consecutivePasses: roomTable.biddingPasses,
             canPass: Boolean(roomTable.biddingHighestBid),
+            canDouble: Boolean(roomTable.biddingActivePlayer) && isDoubleAllowed(roomTable, roomTable.biddingActivePlayer),
+            isDoubled: roomTable.contractDoubled,
             playerBids: roomTable.biddingDisplay
         });
-        io.to(roomId).emit("standing_call", formatBid(roomTable.biddingHighestBid));
+        io.to(roomId).emit("standing_call", formatBid(roomTable.biddingHighestBid, roomTable.contractDoubled));
     }
 
     function finalizeBid(roomId, roomTable){
@@ -650,7 +753,7 @@ module.exports = (io, getTables, updateTables)=>{
         roomTable.biddingHistory = [];
 
         io.to(roomId).emit("bidding_state", null);
-        io.to(roomId).emit("standing_call", formatBid(winningBid));
+        io.to(roomId).emit("standing_call", formatBid(winningBid, roomTable.contractDoubled));
         io.to(roomId).emit("next_player", {
             nextPlayer: NextPlayer[declarer],
             nextCards: NextPlayer[declarer],
