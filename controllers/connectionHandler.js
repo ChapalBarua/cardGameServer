@@ -1,4 +1,92 @@
 module.exports = (io, getTables, updateTables, getUserTracker, emitActiveRooms)=>{
+  const getInitialRoomState = function(roomId) {
+    return {
+      roomId: roomId,
+      cards: {
+        one: [],
+        two: [],
+        three: [],
+        four: []
+      },
+      players: {
+        one: 'player one',
+        two: 'player two',
+        three: 'player three',
+        four: 'player four'
+      },
+      cardsOnTable: [],
+      cardShown: false,
+      currentRound: 0,
+      completedGame: 0,
+      currentSetColor: '',
+      setColorBroken: false,
+      biddingActivePlayer: 'one',
+      biddingHighestBid: null,
+      biddingPasses: 0,
+      biddingDisplay: {
+        one: '',
+        two: '',
+        three: '',
+        four: ''
+      },
+      biddingHistory: [],
+      contractDoubled: false,
+      whoSetColor: '',
+      whoShowCards: '',
+      currentCall: 0,
+      whoPlayNext: '',
+      usersOnTable: 0,
+      currentPoints: {
+        team1: 0,
+        team2: 0,
+        setsTakenByTeam1: 0,
+        setsTakenByTeam2: 0,
+        activeGamesByTeam1: 0,
+        activeGamesByTeam2: 0
+      },
+      honorsPointsForHand: {
+        team1: 0,
+        team2: 0
+      },
+      cardHistory: []
+    };
+  };
+
+  const resetCurrentHandState = function(roomTable) {
+    roomTable.cards = {
+      one: [],
+      two: [],
+      three: [],
+      four: []
+    };
+    roomTable.cardsOnTable = [];
+    roomTable.cardShown = false;
+    roomTable.currentRound = 0;
+    roomTable.currentSetColor = '';
+    roomTable.setColorBroken = false;
+    roomTable.biddingActivePlayer = 'one';
+    roomTable.biddingHighestBid = null;
+    roomTable.biddingPasses = 0;
+    roomTable.biddingDisplay = {
+      one: '',
+      two: '',
+      three: '',
+      four: ''
+    };
+    roomTable.biddingHistory = [];
+    roomTable.contractDoubled = false;
+    roomTable.whoSetColor = '';
+    roomTable.whoShowCards = '';
+    roomTable.currentCall = 0;
+    roomTable.whoPlayNext = '';
+    roomTable.cardHistory = [];
+    roomTable.honorsPointsForHand = {
+      team1: 0,
+      team2: 0
+    };
+    roomTable.currentPoints.setsTakenByTeam1 = 0;
+    roomTable.currentPoints.setsTakenByTeam2 = 0;
+  };
 
   const removeUserFromRoom = function(socket, options = { countDisconnectedUser: false }) {
     const roomId = socket.data.roomId;
@@ -13,16 +101,20 @@ module.exports = (io, getTables, updateTables, getUserTracker, emitActiveRooms)=
 
     let userTable = tables.find(table=>table.roomId===roomId);
     if (userTable) {
+      const serial = socket.data.serial;
+      const userName = socket.data.user;
+
       userTable.usersOnTable--;
+      userTable.players[serial] = 'player ' + serial;
+
       if(userTable.usersOnTable===0){ // no user left in room
         tables = tables.filter(table=>table.roomId!=roomId);
       } else {
+        resetCurrentHandState(userTable);
         io.to(roomId).emit("can_shuffle", false);
-        
-        let serial = socket.data.serial;
-        let userName = socket.data.user;
-        userTable.players[serial] = 'player ' + serial;
-
+        io.to(roomId).emit("bidding_state", null);
+        io.to(roomId).emit("standing_call", 'No bid yet');
+        io.to(roomId).emit("update_points", userTable.currentPoints);
         socket.to(roomId).emit("user_left_room", userName, userTable.players);
       }
     }
@@ -56,56 +148,8 @@ module.exports = (io, getTables, updateTables, getUserTracker, emitActiveRooms)=
       let serial = 'one';
 
       // table for the room
-      userTable = {
-        roomId: roomId,
-        cards: {
-          one: [],
-          two: [],
-          three: [],
-          four: []
-        },
-        players: {
-          one: 'player one',
-          two: 'player two',
-          three: 'player three',
-          four: 'player four'
-        },
-        cardsOnTable: [],
-        cardShown: false,
-        currentRound: 0, // running round out of 13 card set (4*13)
-        completedGame: 0, // how many games are completed
-        currentSetColor: '',
-        setColorBroken: false,
-        biddingActivePlayer: 'one',
-        biddingHighestBid: null,
-        biddingPasses: 0,
-        biddingDisplay: {
-          one: '',
-          two: '',
-          three: '',
-          four: ''
-        },
-        biddingHistory: [],
-        contractDoubled: false,
-        whoSetColor: '', //('one', 'two', 'three', 'four'),
-        whoShowCards: '', //('one', 'two', 'three', 'four'),
-        currentCall: 0, // 1,2,3,4,5,6,7
-        whoPlayNext: '', // one, two, three, four
-        usersOnTable: 1,
-        currentPoints: { // team 1 -one,three, team two - two four serial
-          team1: 0,
-          team2: 0,
-          setsTakenByTeam1: 0,
-          setsTakenByTeam2: 0,
-          activeGamesByTeam1: 0,
-          activeGamesByTeam2: 0
-        },
-        honorsPointsForHand: {
-          team1: 0,
-          team2: 0
-        },
-        cardHistory: []
-      };
+      userTable = getInitialRoomState(roomId);
+      userTable.usersOnTable = 1;
       
   
       // creating and joining an empty room
