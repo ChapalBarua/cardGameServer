@@ -1,6 +1,6 @@
 {
   "configVersion": 1,
-  "timestamp": 1778933742638,
+  "timestamp": 1779221133202,
   "index": "/index.html",
   "assetGroups": [
     {
@@ -11,14 +11,14 @@
         "ignoreVary": true
       },
       "urls": [
-        "/chunk-2M2M5ZPQ.js",
-        "/chunk-Q35ZFGLR.js",
+        "/chunk-Q4RTL6QS.js",
+        "/chunk-TAVZOUKJ.js",
         "/favicon.ico",
         "/index.html",
-        "/main-S6QO7GH4.js",
+        "/main-6Y2ZG7AS.js",
         "/manifest.webmanifest",
         "/polyfills-RT5I6R6G.js",
-        "/styles-EL74AGER.css"
+        "/styles-E2Q24H5Q.css"
       ],
       "patterns": []
     },
@@ -186,14 +186,14 @@
     "/assets/svg-cards/simple/queen_of_diamonds.svg": "d4c62442e5b05b77cabec116831a4ea9dc9ed541",
     "/assets/svg-cards/simple/queen_of_hearts.svg": "72b8854418bda626cc575b4fa59a674409e55a76",
     "/assets/svg-cards/simple/queen_of_spades.svg": "2797b0a1a6a97095fc67ce151ba416e3b13495ff",
-    "/chunk-2M2M5ZPQ.js": "0c569f698cc5bd0d25c1a0c833ec592045171c32",
-    "/chunk-Q35ZFGLR.js": "904fce288e7cc9a1826e8e184c90aa6dd5998ec9",
+    "/chunk-Q4RTL6QS.js": "24f2f16b96433827525c24d1dc2aa1e9cf7b2a73",
+    "/chunk-TAVZOUKJ.js": "b9bf51ed9066ddf8a9461bba4f80fe17bc00b0ab",
     "/favicon.ico": "22f6a4a3bcaafafb0254e0f2fa4ceb89e505e8b2",
-    "/index.html": "d6ab1bb8ecc59a096c89be82f2ca343e3ee57fa8",
-    "/main-S6QO7GH4.js": "20ef96a4d3f5f87bb18bb82e3b1948b49ef07ee9",
+    "/index.html": "c5dc22f3696b41dc4b552bcbec423a5aea8c2a43",
+    "/main-6Y2ZG7AS.js": "4996bd85c350842122710c0662bb7e436cea4584",
     "/manifest.webmanifest": "3d2265fe6d1619020b43ee518ab2febc8ae44910",
     "/polyfills-RT5I6R6G.js": "fe9f024576f21ff6314cf8f8332cde58b9a12416",
-    "/styles-EL74AGER.css": "b08153a26ba22b2e908404e269ef5b5e04389499"
+    "/styles-E2Q24H5Q.css": "ac63d88ad48aaa124ffc8830c73bd6d2ca232324"
   },
   "navigationUrls": [
     {
